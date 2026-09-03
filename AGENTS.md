@@ -7,6 +7,7 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Every baseline and proposed algorithm must consume the same frozen workflow instances, resource descriptions, network conditions, constraints, and reference metadata.
 - Raw Pegasus/Bharathi DAX source artifacts are immutable after acquisition and identified by checksum; do not claim an upstream workflow seed controls legacy Bharathi randomness.
 - Core v1 size labels are exact actual task counts; `allowed_size_deviation = 0`.
+- Bharathi `--numjobs/-n` is an upstream model input, not an exact-output guarantee for every family. Acquisition searches the deterministic sequence `target, target+1, ...` within the configured attempt bound and accepts only a parsed DAX whose actual task count equals the benchmark target; record `requested_numjobs` separately from actual count.
 - There are exactly three frozen source replicates (`r01`, `r02`, `r03`) per family/size, mapped to IFC realization seeds `101`, `202`, `303`.
 - Scheduler-visible resources are serial execution slots with `concurrency_slots = 1`.
 - Benchmark-owned generation from frozen source DAX, committed configuration, and explicit seeds must be deterministic.
@@ -24,7 +25,7 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
-- The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests a real Montage-50 acquisition on relevant PRs. After the acquisition implementation reaches `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
+- The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests real Montage-50 and SIPHT-50 acquisition on relevant PRs. After acquisition changes reach `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
 
 ## Planned structure
 - `docs/` - benchmark specification and methodology.
