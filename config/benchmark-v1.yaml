@@ -3,6 +3,22 @@ dataset:
   version: v1-draft
   status: specification
 
+source_workflows:
+  provider: pegasus
+  repository: pegasus-isi/WorkflowGenerator
+  implementation: bharathi
+  pinned_commit: bb1f8d43fe203f5c2cb209540531998af52000ea
+  immutable_after_acquisition: true
+  checksum: sha256
+  acquisition:
+    application_argument: --application
+    job_count_argument: --numjobs
+    max_attempts_per_replicate: 100
+    accept_only_exact_task_count: true
+    accept_first_structurally_valid_matches: true
+    require_distinct_replicate_checksums: true
+  expected_raw_artifacts: 105
+
 workflows:
   families:
     - montage
@@ -11,7 +27,9 @@ workflows:
     - sipht
     - genome
   requested_task_counts: [50, 100, 200, 400, 600, 800, 1000]
-  allowed_size_deviation: null  # must be decided before freeze
+  task_count_policy: exact
+  allowed_size_deviation: 0
+  source_replicates: [r01, r02, r03]
   reference_mips: 1000
   data_size_unit: decimal_mb
 
@@ -169,12 +187,15 @@ scenario_profiles:
     compute_unchanged: true
 
 replications:
-  seeds: [101, 202, 303]
-  independent_rng_streams:
-    - workflow
+  source_to_ifc_seed:
+    r01: 101
+    r02: 202
+    r03: 303
+  benchmark_owned_rng_streams:
     - resource
     - network
     - constraint
+  upstream_workflow_seed_supported: false
 
 scheduling_input:
   mode: static
@@ -245,6 +266,8 @@ budget:
   report_degenerate_budget_ranges: true
 
 pilot_freeze_gates:
+  require_exact_source_task_counts: true
+  require_distinct_source_replicates: true
   require_nontrivial_tier_tradeoffs: true
   require_profile_effect_validation: true
   require_scale_contention_validation: true
@@ -252,6 +275,7 @@ pilot_freeze_gates:
   require_sensitivity_analysis: true
 
 freeze_requirements:
+  require_source_manifest_validation: true
   require_schema_validation: true
   require_semantic_validation: true
   require_deterministic_regeneration: true
