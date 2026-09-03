@@ -78,7 +78,21 @@ def test_normalize_dax_preserves_exact_runtime_and_edge_bytes():
     assert result["metadata"]["actual_task_count"] == 2
     assert result["tasks"][0]["work_mi"] == "1250.00"
     assert result["dependencies"] == [
-        {"parent": "A", "child": "B", "data_bytes": 1000, "data_bits": 8000}
+        {
+            "parent": "A",
+            "child": "B",
+            "data_bytes": 1000,
+            "data_bits": 8000,
+            "data_size_source": "producer_output",
+            "transfer_files": [
+                {
+                    "name": "x.dat",
+                    "producer_size_bytes": 1000,
+                    "consumer_declared_sizes_bytes": [1000],
+                    "consumer_size_matches_producer": True,
+                }
+            ],
+        }
     ]
     assert execution_time_us("1250.00", 500) == 2_500_000
 
@@ -86,6 +100,16 @@ def test_normalize_dax_preserves_exact_runtime_and_edge_bytes():
 def test_exact_task_count_is_enforced():
     with pytest.raises(DaxValidationError, match="does not equal exact target"):
         normalize_dax(DAX, family="montage", target_task_count=3, replicate_id="r01")
+
+
+def test_producer_output_size_is_authoritative_when_consumer_metadata_differs():
+    mismatch = DAX.replace('link="input" size="1000"', 'link="input" size="777"')
+    result = normalize_dax(mismatch, family="montage", target_task_count=2, replicate_id="r01")
+    edge = result["dependencies"][0]
+    assert edge["data_bytes"] == 1000
+    assert edge["data_size_source"] == "producer_output"
+    assert edge["transfer_files"][0]["consumer_declared_sizes_bytes"] == [777]
+    assert edge["transfer_files"][0]["consumer_size_matches_producer"] is False
 
 
 def test_dependency_without_shared_file_is_rejected():
