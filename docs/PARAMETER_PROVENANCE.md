@@ -1,14 +1,22 @@
-# Numerical Parameter Provenance — v1 Draft
+# Numerical Parameter Provenance — v1 Pilot Candidate
 
 ## Purpose
 
-The benchmark should use numerical ranges that are traceable to published fog/cloud simulation practice or clearly labelled synthetic normalization. This document records the evidence used to choose the eventual v1 ranges and prevents arbitrary constants from becoming invisible assumptions.
+The benchmark uses numerical values only when their abstraction level and units are explicit. Published values are used as anchors; benchmark-specific interpolation, topology distances, and latency points are labelled as design assumptions rather than presented as empirical measurements.
 
-## Published reference points
+The numerical model in `RESOURCE_MODEL.md` is the **pilot candidate**. It becomes frozen v1 only after the pilot validation gates pass.
+
+## Execution-resource abstraction
+
+V1 models scheduler-visible **serial execution slots** rather than entire multi-core hosts. Each resource has `concurrency_slots = 1`.
+
+This choice avoids giving some algorithms implicit parallelism that HEFT-style baselines do not model. It also allows published VM/device-like MIPS, price, and task-attributed active-power ranges to be used consistently.
+
+## Published Fog/Cloud anchors
 
 ### EEOA — Sensors 2023
 
-The study *EEOA: Cost and Energy Efficient Task Scheduling in a Cloud-Fog Framework* reports the following simulation ranges:
+*EEOA: Cost and Energy Efficient Task Scheduling in a Cloud-Fog Framework* reports simulation ranges including:
 
 - Cloud compute: 3000–5000 MIPS
 - Fog compute: 1000–2000 MIPS
@@ -16,127 +24,186 @@ The study *EEOA: Cost and Energy Efficient Task Scheduling in a Cloud-Fog Framew
 - Fog RAM: 250–5000 MB
 - Cloud bandwidth: 512–4096 Mbps
 - Fog bandwidth: 128–1024 Mbps
-- Cloud processing cost: 0.6–1.0 G$ per unit
-- Fog processing cost: 0.2–0.5 G$ per unit
+- Cloud processing cost: 0.6–1.0 normalized/G$ units per time unit
+- Fog processing cost: 0.2–0.5 units per time unit
 
-Source: Sensors 2023, 23(5), 2445, DOI `10.3390/s23052445`.
+Source: Sensors 2023, 23(5), 2445. DOI `10.3390/s23052445`.
+
+V1 uses EEOA directly for the Fog/Cloud compute envelopes and Cloud memory envelope. Price ratios are retained as normalized benchmark cost rather than claimed as a real currency.
 
 ### EMCS — Sustainability 2022
 
-The study *EMCS: An Energy-Efficient Makespan Cost-Aware Scheduling Algorithm Using Evolutionary Learning Approach for Cloud-Fog-Based IoT Applications* reports:
+*EMCS: An Energy-Efficient Makespan Cost-Aware Scheduling Algorithm Using Evolutionary Learning Approach for Cloud-Fog-Based IoT Applications* reports:
 
-- Cloud processing: 250–500 MIPS
-- Fog processing: 10–500 MIPS
-- Cloud bandwidth options: 10, 100, 512, 1024 Mbps
-- Fog bandwidth: 1024 Mbps
-- Task communication data: 10–50 MB
-- Cloud processing cost: 0.5 G$/s
-- Fog processing cost: 0.1–0.5 G$/s
-- Fog execution power: 1–5 W
+- Fog active/execution power: 1–5 W
 - Fog idle power: 0.05 W
-- Cloud execution power: 5–10 W
+- Cloud active/execution power: 5–10 W
+- Fog processing cost: 0.1–0.5 per second/time unit
+- Cloud processing cost: approximately 0.5 in that experiment
+- Cloud/Fog bandwidth values spanning 10–1024 Mbps
 
-Source: Sustainability 2022, 14(22), 15096, DOI `10.3390/su142215096`.
+Source: Sustainability 2022, 14(22), 15096. DOI `10.3390/su142215096`.
 
-### iFogSim-based resource examples
+V1 uses the 1–5 W Fog active envelope, 0.05 W Fog idle point, and 5–10 W Cloud active envelope. It does not invent Cloud idle power because idle energy is excluded from the primary v1 energy objective.
 
-Published iFogSim experiments also use substantially larger machine-level capacities. One reported setup uses approximately:
+## IoT anchors
 
-- Cloud CPU: 44,800 MIPS
-- Proxy CPU: 2,800 MIPS
-- Fog CPU: 5,800 MIPS
-- Cloud RAM: 40,000 MB
-- Proxy RAM: 4,000 MB
-- Fog RAM: 16,000 MB
-- Proxy busy/idle power: about 107/83 W
-- Fog busy/idle power: about 157/83 W
+### iFogSim-style sensor compute
 
-These values illustrate that absolute MIPS/power figures vary significantly depending on whether the simulated entity represents a VM, a fog device, or a larger physical host. We should therefore avoid mixing values from different abstraction levels without normalization.
+Published iFogSim simulation configurations commonly model sensor/edge nodes around 500 MIPS while Fog/Cloud entities are faster. V1 uses 500 MIPS as the IoT lower class and 1000 MIPS as the upper class so the IoT tier overlaps the slow Fog boundary without becoming uniformly dominated by compute alone.
 
-## Implication for our benchmark
+These are scheduler-normalization points, not claims about instruction throughput of a specific CPU model.
 
-The v1 benchmark should model **scheduler-visible execution resources**, not entire datacenter physical hosts. For that reason, the first numeric profile should stay in a VM/device-like range rather than combine 5-W virtual execution power with 1.6-kW physical-server power in the same objective.
+### Raspberry Pi 4 power
 
-## Proposed normalized v1 ranges for validation
+Raspberry Pi engineering measurements for Raspberry Pi 4 after firmware improvements report approximately:
 
-The following are candidate ranges to test, not yet frozen:
+- idle power: about 2.1 W;
+- synthetic load power: about 6.41 W.
 
-| Tier | Compute (MIPS) | RAM (MB) | Active Power (W) | Idle Power (W) | Price / sec (normalized units) |
+Source: Raspberry Pi, *Thermal testing Raspberry Pi 4*, 2019, https://www.raspberrypi.com/news/thermal-testing-raspberry-pi-4/ .
+
+V1 therefore bounds IoT active class power between 3.5 W and 6.4 W and uses 2.1 W as an idle anchor. The 3.5 W and 5.0 W class points are benchmark interpolation values; only the envelope anchor is empirical.
+
+## Pilot resource classes
+
+All monetary values below are normalized, not currency.
+
+| Tier/class | MIPS | Memory MB | Active W | Idle W | normalized price/s |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| IoT | 250–1000 | 256–2048 | 0.5–3 | 0.05–0.5 | 0–0.05 |
-| Fog | 1000–3000 | 2048–8192 | 2–8 | 0.1–1.5 | 0.10–0.50 |
-| Cloud | 3000–6000 | 4096–16384 | 5–15 | 0.5–3 | 0.50–1.00 |
+| IoT economy | 500 | 512 | 3.5 | 2.1 | 0.000 |
+| IoT balanced | 750 | 1024 | 5.0 | 2.1 | 0.025 |
+| IoT performance | 1000 | 2048 | 6.4 | 2.1 | 0.050 |
+| Fog economy | 1000 | 1024 | 1.0 | 0.05 | 0.10 |
+| Fog balanced | 1500 | 2048 | 3.0 | 0.05 | 0.30 |
+| Fog performance | 2000 | 4096 | 5.0 | 0.05 | 0.50 |
+| Cloud economy | 3000 | 5000 | 5.0 | n/a | 0.60 |
+| Cloud balanced | 4000 | 10000 | 7.5 | n/a | 0.80 |
+| Cloud performance | 5000 | 20000 | 10.0 | n/a | 1.00 |
 
-Rationale:
+The table deliberately creates conflicting objectives:
 
-- Fog/cloud MIPS and cost ranges are anchored primarily to EEOA, with modest extension to produce heterogeneous overlap.
-- Cloud/fog power ranges are anchored to the VM-like EMCS values rather than physical-host iFogSim power.
-- IoT ranges are intentionally below fog and are labelled synthetic until supported by a specific edge-device source.
-- Price values are normalized benchmark cost units, not claims of current public-cloud currency pricing.
+- Cloud is fastest but generally expensive;
+- Fog can be substantially more energy efficient for task execution;
+- IoT can be monetarily free/cheap but slow and can have worse task energy than an efficient Fog slot;
+- communication can reverse a compute-only placement preference.
 
-Before freeze, the IoT row needs a dedicated empirical/literature source and the full range set needs sensitivity testing.
+Pilot validation must confirm this produces nontrivial Pareto trade-offs rather than relying on the intended qualitative behavior.
 
-## Proposed network baseline for validation
+## Network-energy model
 
-The published studies show bandwidth values spanning roughly tens to several thousand Mbps depending on tier and topology. Instead of assigning one bandwidth to each resource, v1 should define tier-pair paths.
+The earlier draft `energy_j_per_mb` placeholder is retired. V1 uses a dimensionally explicit `energy_pj_per_bit` for each routed segment.
 
-Candidate balanced-profile values:
+### Short-range wireless: first-order radio model
 
-| Path | Bandwidth (Mbps) | Base latency (ms) |
-| --- | ---: | ---: |
-| IoT↔IoT | 100 | 2 |
-| IoT↔Fog | 250 | 5 |
-| IoT↔Cloud | 100 | 40 |
-| Fog↔Fog | 1000 | 2 |
-| Fog↔Cloud | 500 | 20 |
-| Cloud↔Cloud | 2000 | 1 |
+A widely used first-order wireless-sensor-network radio model uses:
 
-These latency values are benchmark-design assumptions and therefore remain **synthetic candidate values** until supported or replaced by cited measurements. Bandwidth choices are within published simulation envelopes, but their tier-pair arrangement is our own model.
+- electronics energy `E_elec = 50 nJ/bit` for transmit and receive electronics;
+- free-space amplifier coefficient `E_amp = 100 pJ/bit/m^2`.
+
+For one bit transmitted a distance `d` and received once:
+
+`E_total_bit = 2 × E_elec + E_amp × d^2`
+
+V1 applies explicit benchmark distances:
+
+- IoT↔IoT peer: `d = 10 m` → `110 nJ/bit`;
+- IoT↔Fog access: `d = 25 m` → `162.5 nJ/bit`.
+
+The coefficients are literature-backed; the 10 m and 25 m distances are transparent benchmark assumptions to be sensitivity-tested.
+
+### Ethernet/backbone: Kopras et al.
+
+Kopras et al., *Communication and Computing Task Allocation for Energy-Efficient Fog Networks*, model dynamic communication energy with values including approximately:
+
+- `2 nJ/bit` for a 1 GbE switch;
+- `12.66 nJ/bit` for the modeled backbone path toward Cloud.
+
+The paper reports energy attributable to network transmission separately from computation and is therefore compatible with our per-edge communication-energy objective.
+
+V1 uses:
+
+- Fog LAN: `2 nJ/bit`;
+- Cloud LAN: `2 nJ/bit`;
+- Fog↔Cloud route: `12.66 + 2 + 2 = 16.66 nJ/bit`, representing backbone plus two Ethernet-switch contributions.
+
+This is a benchmark route decomposition; it is not intended to model every real Internet hop.
+
+## Pilot balanced network
+
+| Segment | Bandwidth Mbps | Base latency ms | Energy nJ/bit | Status |
+| --- | ---: | ---: | ---: | --- |
+| IoT peer wireless | 100 | 2 | 110.00 | radio coefficients sourced; distance synthetic |
+| IoT↔Fog wireless | 100 | 5 | 162.50 | radio coefficients sourced; distance synthetic |
+| Fog LAN | 1000 | 2 | 2.00 | energy anchored to Ethernet source; latency synthetic |
+| Fog↔Cloud backbone | 500 | 20 | 16.66 | energy derived from backbone/switch source; latency synthetic |
+| Cloud LAN | 2000 | 1 | 2.00 | energy anchored to Ethernet source; latency synthetic |
+
+Bandwidth points stay within the broad simulation envelopes reported by EEOA/EMCS. The exact tier-pair bandwidth and latency topology is our benchmark design and must be sensitivity-tested.
 
 ## Scenario multipliers
 
-Rather than generating unrelated parameter universes for each profile, scenario profiles should derive from one base realization:
-
 ### Balanced
 
-- compute multiplier: 1.0
-- network bandwidth multiplier: 1.0
-- latency multiplier: 1.0
-- network-energy multiplier: 1.0
+No changes.
 
 ### Compute-constrained
 
-- effective compute multiplier on Fog/Cloud: candidate 0.65–0.80
-- bandwidth/latency unchanged from balanced
+Fog and Cloud MIPS are multiplied by exact ratio `3/4`; IoT and networking remain unchanged.
+
+Rationale: this creates a compute-stress variant without changing resource identity or simultaneously perturbing network conditions.
 
 ### Network-constrained
 
-- inter-tier bandwidth multiplier: candidate 0.25–0.50
-- inter-tier latency multiplier: candidate 2–4
-- network-energy multiplier: candidate 1.5–3
-- compute unchanged from balanced
+Only inter-tier IoT↔Fog and Fog↔Cloud segments change:
 
-Exact multipliers must be chosen after pilot distributions are inspected.
+- bandwidth × `2/5`;
+- latency × `5/2`;
+- transfer energy/bit × `3/2`.
 
-## Network energy
+Same-tier links and compute remain unchanged.
 
-Published workflow/fog scheduling papers frequently model communication energy but use incompatible units/abstractions. We should not copy a value labelled “W” into an `energy_j_per_mb` field.
+These multipliers are benchmark-design stress parameters, not measurements. They must pass profile-effect and sensitivity checks before freeze.
 
-Therefore `energy_j_per_mb` remains unresolved until we select a source with directly compatible units or derive it from a documented transmission-power × transfer-time model.
+## Exact units and arithmetic
 
-## Cost semantics
+V1 stores:
 
-The benchmark should label cost as `normalized_cost_units` unless we intentionally map to a real provider and timestamp the price source. This avoids implying that a synthetic G$/s value is an actual contemporary cloud price.
+- compute performance: integer MIPS;
+- execution time: integer microseconds;
+- active power: integer milliwatts;
+- task compute energy: integer nanojoules (`mW × us`);
+- network energy coefficient: integer picojoules/bit;
+- edge network energy: integer picojoules;
+- cost and budget: integer nano-normalized-cost units.
 
-The objective remains valid because scheduling comparisons depend on consistent relative cost, not the currency symbol.
+This prevents unit ambiguity and avoids binary floating-point drift in materialized reference values.
+
+## Explicitly synthetic assumptions
+
+The following are design choices rather than empirical facts:
+
+- three discrete classes per tier;
+- IoT intermediate compute/power/price points;
+- Fog/Cloud class interpolation within literature envelopes;
+- IoT normalized execution prices;
+- 10 m and 25 m wireless distances;
+- tier-pair latency values;
+- exact bandwidth assignment to routed segments;
+- compute/network stress multipliers;
+- S01/S02/S03 2:2:1 resource-count ratio.
+
+These remain legitimate benchmark parameters because they are explicit, versioned, and sensitivity-tested instead of being presented as measured reality.
 
 ## Freeze gate for numerical values
 
-No numerical range should move from candidate to frozen until:
+Pilot values become frozen only if aggregate validation shows:
 
-1. its abstraction level is compatible with our resource model;
-2. units are explicit and dimensionally valid;
-3. provenance is recorded;
-4. pilot generation shows nontrivial placement trade-offs;
-5. no tier dominates all objectives by construction;
-6. sensitivity analysis shows conclusions are not caused by one arbitrary constant.
+1. no tier dominates all objectives by construction;
+2. representative tasks expose multiple Pareto-relevant placements;
+3. profile changes have intended, measurable effects;
+4. the three infrastructure scales show meaningful contention differences;
+5. network-heavy workflows respond to network stress;
+6. calibration/budget ranges are sufficiently nondegenerate;
+7. conclusions are robust to sensitivity variation of the explicitly synthetic assumptions;
+8. all units and derivations reconstruct exactly from committed configuration.
