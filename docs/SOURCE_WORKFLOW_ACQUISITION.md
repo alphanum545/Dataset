@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The IFC benchmark must preserve the statistical workflow structure, runtime, and file-size characteristics of established Pegasus scientific-workflow models without pretending that an upstream legacy generator is more reproducible than it actually is.
+The IFC benchmark must preserve the statistical workflow structure, runtime, and file-size characteristics of established Pegasus scientific-workflow models without pretending that an upstream legacy generator is more reproducible or exact than it actually is.
 
 V1 therefore separates two stages:
 
@@ -13,13 +13,9 @@ Only stage 2 is required to regenerate byte-equivalent IFC benchmark instances. 
 
 ## Upstream generator pinned for v1 pilot
 
-Repository:
+Repository: `pegasus-isi/WorkflowGenerator`
 
-`pegasus-isi/WorkflowGenerator`
-
-Implementation:
-
-`bharathi`
+Implementation: `bharathi`
 
 Pinned upstream commit:
 
@@ -47,10 +43,11 @@ Instead, raw DAX files are **frozen source artifacts**. Each artifact receives:
 
 - upstream repository and pinned commit;
 - application family;
-- requested job-count argument;
+- benchmark target task count;
+- actual `--numjobs/-n` value sent to Bharathi;
 - acquisition replicate ID;
 - acquisition attempt index;
-- actual DAX job count;
+- actual parsed DAX job count;
 - SHA-256 checksum;
 - acquisition command/environment metadata.
 
@@ -76,35 +73,55 @@ The benchmark size therefore does not change.
 
 ## Exact task-count rule
 
-The seven benchmark size labels represent **actual normalized workflow task counts**, not approximate labels:
+The seven benchmark size labels represent **actual parsed workflow task counts**, not the upstream request parameter:
 
 `50, 100, 200, 400, 600, 800, 1000`
 
-For each family/size/replicate:
+`allowed_size_deviation = 0` remains unchanged.
 
-1. invoke the pinned Bharathi `AppGenerator` with the target through the application's `--numjobs/-n` interface;
+A real full-source acquisition run demonstrated why this distinction is necessary: Bharathi SIPHT invoked with `-n 50` repeatedly emits a 48-task DAG. Inspection of the pinned SIPHT implementation confirms that `numJobs` is transformed into subworkflow counts and is therefore a model/planning input rather than an exact-output contract.
+
+### Deterministic request search
+
+For benchmark target `N`, one replicate uses the fixed request sequence:
+
+`N, N+1, N+2, ... , N+(max_attempts-1)`
+
+With the v1 bound of 100 attempts, the largest permitted upstream request is `N+99`.
+
+For each attempt:
+
+1. invoke the pinned Bharathi `AppGenerator` with current `requested_numjobs`;
 2. parse the emitted DAX and count actual jobs;
-3. validate XML/DAX structure and required runtime/file metadata;
-4. accept the artifact only if `actual_job_count == target_job_count`;
-5. otherwise discard it only for this declared structural reason and acquire the next attempt;
-6. fail acquisition after `100` attempts rather than silently accepting a nearby size.
+3. validate XML/DAX structure, runtimes, dependencies, and required file metadata;
+4. accept only if `actual_task_count == benchmark_target`;
+5. reject an otherwise valid artifact whose actual count differs from the target;
+6. proceed to the next larger request value;
+7. fail acquisition after the bounded search rather than accepting a nearby actual size.
 
-There is therefore **no requested-vs-actual percentage tolerance** in core v1.
+Therefore a source manifest may contain, for example:
 
-If a family/size cannot produce the exact target within the bounded acquisition rule, that family/size is a benchmark-design failure requiring explicit review; it is not automatically relabelled or rounded.
+- `target_task_count: 50`
+- `requested_numjobs: 52`
+- `actual_task_count: 50`
+
+The benchmark instance is still a genuine **50-task** workflow. The value 52 is only upstream acquisition provenance.
+
+This rule is family-neutral; there is no hand-coded SIPHT correction formula. It adapts to the pinned generator's actual output while preserving an exact cross-family benchmark size grid.
 
 ## Anti-selection-bias rule
 
 For each family/size pair, accept the **first three** acquisition attempts that satisfy only the predeclared structural gates:
 
-- exact task count;
+- exact actual task count;
 - valid DAG/DAX;
 - required task-runtime metadata present and valid;
-- dependency/file metadata parseable under the normalizer contract.
+- dependency/file metadata parseable under the normalizer contract;
+- checksum distinct from already accepted replicates for that family/size.
 
 Do **not** inspect makespan, cost, energy, graph density, critical-path length, or algorithm performance to decide which valid DAX to keep.
 
-This prevents source-workflow selection from being tuned to favor or disadvantage any scheduling algorithm.
+The deterministic increasing request sequence and first-valid rule prevent manual hunting for a favorable topology.
 
 ## Proposed source tree
 
@@ -121,7 +138,7 @@ source_workflows/
     └── genome/
 ```
 
-A source manifest should sit beside or above this tree and record checksums/provenance for every raw artifact.
+A source manifest sits beside or above this tree and records checksums/provenance for every raw artifact.
 
 ## Deterministic IFC replication seeds
 
@@ -150,9 +167,11 @@ The source set must pass:
 
 1. exactly 105 raw artifacts exist;
 2. exactly three replicates exist per family/size;
-3. every raw artifact has the exact target job count;
-4. every raw artifact is a valid DAG;
-5. every accepted artifact satisfies the declared metadata gates;
-6. no two replicates within one family/size have the same raw checksum; if duplicates occur, acquisition continues until three distinct valid artifacts are collected or the 100-attempt bound is reached;
-7. manifest checksum and file checksum agree;
-8. no selection criterion depends on a scheduler's results.
+3. every raw artifact has the exact benchmark target task count;
+4. every manifest entry records both `requested_numjobs` and actual count;
+5. every raw artifact is a valid DAG;
+6. every accepted artifact satisfies the declared metadata gates;
+7. no two replicates within one family/size have the same raw checksum;
+8. manifest checksum and file checksum agree;
+9. every accepted attempt follows the deterministic increasing request sequence;
+10. no selection criterion depends on a scheduler's results.
