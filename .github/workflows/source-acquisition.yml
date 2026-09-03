@@ -5,7 +5,9 @@ on:
     paths:
       - generator/acquire.py
       - generator/dax.py
+      - tests/test_acquire.py
       - config/benchmark-v1.yaml
+      - docs/SOURCE_WORKFLOW_ACQUISITION.md
       - .github/workflows/source-acquisition.yml
   push:
     branches:
@@ -13,7 +15,9 @@ on:
     paths:
       - generator/acquire.py
       - generator/dax.py
+      - tests/test_acquire.py
       - config/benchmark-v1.yaml
+      - docs/SOURCE_WORKFLOW_ACQUISITION.md
       - .github/workflows/source-acquisition.yml
 
 jobs:
@@ -28,7 +32,7 @@ jobs:
           python-version: '3.11'
           cache: pip
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '8'
@@ -42,7 +46,7 @@ jobs:
           git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$UPSTREAM_COMMIT"
       - name: Compile Bharathi generator
         run: ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
-      - name: Acquire and validate one real Montage-50 source
+      - name: Acquire real Montage-50 and SIPHT-50 sources
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -52,18 +56,20 @@ jobs:
           from generator.config import load_config
 
           config = load_config('config/benchmark-v1.yaml')
-          config['workflows']['families'] = ['montage']
+          config['workflows']['families'] = ['montage', 'sipht']
           config['workflows']['requested_task_counts'] = [50]
           config['workflows']['source_replicates'] = ['r01']
-          config['source_workflows']['expected_raw_artifacts'] = 1
-          config['source_workflows']['acquisition']['max_attempts_per_replicate'] = 20
+          config['source_workflows']['expected_raw_artifacts'] = 2
 
-          acquire_source_workflows(
+          manifest = acquire_source_workflows(
               config,
               upstream_dir=Path(os.environ['RUNNER_TEMP']) / 'WorkflowGenerator' / 'bharathi',
               output_root=Path(os.environ['RUNNER_TEMP']) / 'source-smoke',
               manifest_path=Path(os.environ['RUNNER_TEMP']) / 'source-smoke-manifest.json',
           )
+          assert manifest['artifact_count'] == 2
+          assert all(entry['actual_task_count'] == 50 for entry in manifest['entries'])
+          assert {entry['family'] for entry in manifest['entries']} == {'montage', 'sipht'}
           PY
 
   generate-full-source-set:
@@ -83,7 +89,7 @@ jobs:
           python-version: '3.11'
           cache: pip
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '8'
