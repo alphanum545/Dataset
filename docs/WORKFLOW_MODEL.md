@@ -90,17 +90,26 @@ Source runtime text is parsed with exact-decimal semantics. The generator must n
 
 Communication volume for a precedence edge is derived from files produced by the parent and consumed by the child whenever source file metadata establishes the linkage.
 
-For edge `(parent, child)`:
+For each shared dependency file, **the producer's output size is authoritative**:
 
-`edge_data_bytes = sum(size(file))`
+`edge_data_bytes = sum(parent_output_size(shared_file))`
 
-for files that are outputs of `parent` and inputs of `child`.
+This rule is required because the pinned legacy Bharathi generator can emit different `size` values on the producer's `output` `<uses>` record and the consumer's `input` `<uses>` record for the same filename. A real Montage-50 upstream smoke run exposed this behavior. Rejecting such edges would reject valid generated workflow dependencies.
 
-V1 uses decimal megabytes for descriptive data-size fields:
+The normalized edge therefore preserves, for every shared transfer file:
+
+- filename;
+- authoritative producer output size;
+- all consumer-declared input sizes;
+- whether the consumer declaration exactly matches the producer size.
+
+The scheduling transfer size always uses the producer output size: it represents the bytes actually produced and transferred. Consumer-side discrepancies remain visible provenance and are never silently discarded.
+
+V1 uses decimal megabytes for descriptive data-size fields when needed:
 
 `edge_data_mb = edge_data_bytes / 1,000,000`
 
-For exact communication calculations, the generator uses integer bytes/bits rather than the rounded/display MB value:
+For exact communication calculations, the generator uses integer bytes/bits:
 
 `edge_data_bits = edge_data_bytes × 8`
 
@@ -110,13 +119,13 @@ Do not silently invent edge sizes.
 
 Fallback hierarchy:
 
-1. explicit shared-file size from the frozen source DAX;
+1. explicit shared filename where the producer declares an output size; use that producer output size;
 2. workflow-family distribution that is itself part of the pinned source model and can be reconstructed without arbitrary new assumptions;
 3. otherwise mark the source artifact unsupported for core v1 and fail source/normalization validation.
 
 Core v1 does **not** introduce a generic seeded edge-size distribution merely to make an unsupported source pass.
 
-The fraction of directly derived versus fallback-derived edges is reported. Any fallback mechanism used must be versioned and separately identifiable.
+A dependency that has no shared producer-output/consumer-input filename remains invalid for core v1 unless a separately documented source-backed fallback is implemented.
 
 ## Entry and exit data
 
@@ -128,7 +137,7 @@ Core v1 evaluates workflow-internal dependency communication only. External ingr
 
 - tasks sorted by canonical task ID;
 - dependencies sorted by `(parent_id, child_id)`;
-- file metadata sorted by stable file identifier/path;
+- transfer-file metadata sorted by stable filename;
 - resource-independent task fields serialized canonically;
 - integers serialized as integers;
 - exact decimal source values normalized through one documented decimal policy.
@@ -145,7 +154,9 @@ For every frozen raw and normalized workflow:
 - every edge endpoint exists;
 - source runtimes used for work derivation are finite and positive;
 - derived work and execution matrices are positive and reconstructible;
-- every edge data size is nonnegative and provenance-labelled;
+- every internal dependency has source-backed shared-file linkage;
+- authoritative edge transfer bytes equal the sum of producer output sizes for shared files;
+- consumer-side size mismatches are retained as provenance rather than altering transfer bytes;
 - no scheduler result influenced source-artifact acceptance;
 - normalized regeneration from the same raw source and configuration produces identical content/checksum.
 
@@ -163,5 +174,5 @@ At minimum:
 - normalization code commit;
 - reference MIPS;
 - decimal MB convention;
-- edge-data derivation status;
+- per-transfer producer/consumer size metadata;
 - normalized workflow checksum.
