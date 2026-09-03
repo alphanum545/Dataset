@@ -1,0 +1,121 @@
+name: source-acquisition
+
+on:
+  pull_request:
+    paths:
+      - generator/acquire.py
+      - generator/dax.py
+      - config/benchmark-v1.yaml
+      - .github/workflows/source-acquisition.yml
+  push:
+    branches:
+      - main
+    paths:
+      - generator/acquire.py
+      - generator/dax.py
+      - config/benchmark-v1.yaml
+      - .github/workflows/source-acquisition.yml
+
+jobs:
+  upstream-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dataset repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Checkout pinned WorkflowGenerator
+        env:
+          UPSTREAM_COMMIT: bb1f8d43fe203f5c2cb209540531998af52000ea
+        run: |
+          git clone https://github.com/pegasus-isi/WorkflowGenerator.git "$RUNNER_TEMP/WorkflowGenerator"
+          git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$UPSTREAM_COMMIT"
+      - name: Compile Bharathi generator
+        run: ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
+      - name: Acquire and validate one real Montage-50 source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          from generator.acquire import acquire_source_workflows
+          from generator.config import load_config
+
+          config = load_config('config/benchmark-v1.yaml')
+          config['workflows']['families'] = ['montage']
+          config['workflows']['requested_task_counts'] = [50]
+          config['workflows']['source_replicates'] = ['r01']
+          config['source_workflows']['expected_raw_artifacts'] = 1
+          config['source_workflows']['acquisition']['max_attempts_per_replicate'] = 20
+
+          acquire_source_workflows(
+              config,
+              upstream_dir=Path(os.environ['RUNNER_TEMP']) / 'WorkflowGenerator' / 'bharathi',
+              output_root=Path(os.environ['RUNNER_TEMP']) / 'source-smoke',
+              manifest_path=Path(os.environ['RUNNER_TEMP']) / 'source-smoke-manifest.json',
+          )
+          PY
+
+  generate-full-source-set:
+    if: github.event_name == 'push'
+    needs: upstream-smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout dataset repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Checkout pinned WorkflowGenerator
+        env:
+          UPSTREAM_COMMIT: bb1f8d43fe203f5c2cb209540531998af52000ea
+        run: |
+          git clone https://github.com/pegasus-isi/WorkflowGenerator.git "$RUNNER_TEMP/WorkflowGenerator"
+          git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$UPSTREAM_COMMIT"
+      - name: Compile Bharathi generator
+        run: ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
+      - name: Acquire all 105 frozen source workflows
+        run: |
+          python -m generator.acquire \
+            --config config/benchmark-v1.yaml \
+            --upstream-dir "$RUNNER_TEMP/WorkflowGenerator/bharathi" \
+            --output-root source_workflows \
+            --manifest manifests/source-workflows-v1.json
+      - name: Create generated source branch
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          branch="generated/source-workflows-v1-${SOURCE_SHA:0:8}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing generated branch: $branch" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add source_workflows manifests/source-workflows-v1.json
+          git commit -m "data: acquire frozen Pegasus source workflows"
+          git push origin HEAD

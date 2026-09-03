@@ -150,7 +150,7 @@ def _validate_acyclic(task_ids: set[str], edges: tuple[SourceEdge, ...]) -> None
         raise DaxValidationError("DAX dependency graph contains a cycle")
 
 
-def _edge_data_bytes(parent: SourceTask, child: SourceTask) -> int:
+def _edge_transfer_metadata(parent: SourceTask, child: SourceTask) -> tuple[int, list[dict]]:
     parent_outputs: dict[str, int] = {}
     for use in parent.files:
         if use.link == "output":
@@ -161,7 +161,11 @@ def _edge_data_bytes(parent: SourceTask, child: SourceTask) -> int:
                 )
             parent_outputs[use.name] = use.size_bytes
 
-    child_inputs = {use.name: use.size_bytes for use in child.files if use.link == "input"}
+    child_inputs: dict[str, set[int]] = defaultdict(set)
+    for use in child.files:
+        if use.link == "input":
+            child_inputs[use.name].add(use.size_bytes)
+
     shared = sorted(set(parent_outputs).intersection(child_inputs))
     if not shared:
         raise DaxValidationError(
@@ -169,13 +173,20 @@ def _edge_data_bytes(parent: SourceTask, child: SourceTask) -> int:
         )
 
     total = 0
+    transfer_files: list[dict] = []
     for name in shared:
-        if parent_outputs[name] != child_inputs[name]:
-            raise DaxValidationError(
-                f"dependency file {name!r} has inconsistent parent/child sizes"
-            )
-        total += parent_outputs[name]
-    return total
+        producer_size = parent_outputs[name]
+        consumer_sizes = sorted(child_inputs[name])
+        total += producer_size
+        transfer_files.append(
+            {
+                "name": name,
+                "producer_size_bytes": producer_size,
+                "consumer_declared_sizes_bytes": consumer_sizes,
+                "consumer_size_matches_producer": consumer_sizes == [producer_size],
+            }
+        )
+    return total, transfer_files
 
 
 def normalize_dax(
@@ -225,13 +236,15 @@ def normalize_dax(
 
     normalized_edges = []
     for edge in edges:
-        data_bytes = _edge_data_bytes(tasks[edge.parent], tasks[edge.child])
+        data_bytes, transfer_files = _edge_transfer_metadata(tasks[edge.parent], tasks[edge.child])
         normalized_edges.append(
             {
                 "parent": edge.parent,
                 "child": edge.child,
                 "data_bytes": data_bytes,
                 "data_bits": data_bytes * 8,
+                "data_size_source": "producer_output",
+                "transfer_files": transfer_files,
             }
         )
 

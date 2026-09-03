@@ -21,8 +21,10 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Install development/test dependencies with `python -m pip install -e '.[test]'`.
 - Run the repository test gate with `python -m pytest`.
 - Invoke the generator CLI with `python -m generator.cli`.
+- Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
+- The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests a real Montage-50 acquisition on relevant PRs. After the acquisition implementation reaches `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
 
 ## Planned structure
 - `docs/` - benchmark specification and methodology.
@@ -47,5 +49,6 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 ## Change discipline
 - Do not alter frozen source DAX or dataset files in place; create a new dataset version when benchmark semantics change.
 - Do not select source workflows based on scheduler performance or downstream objectives.
+- Keep generated source-workflow changes on a review branch until their manifest, counts, and checksums are validated.
 - Keep algorithm experiment outputs outside frozen input directories.
 - Do not commit credentials, caches, temporary outputs, local environments, or unrelated generated artifacts.
