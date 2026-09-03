@@ -20,7 +20,7 @@ The generator must retain the family identity and provenance for every normalize
 
 ### 2.2 Workflow sizes
 
-Seven target task-count levels are used so scaling behaviour can be studied without changing the benchmark definition:
+Seven target task-count levels are used:
 
 - 50
 - 100
@@ -30,7 +30,7 @@ Seven target task-count levels are used so scaling behaviour can be studied with
 - 800
 - 1000 tasks
 
-A workflow instance records both the requested size level and its actual normalized task count. If the source workflow generator cannot produce the exact requested count, the actual count must be retained and the deviation must be validated and reported; it must never be silently relabelled.
+A workflow instance records both requested and actual normalized task count. If the source generator cannot produce the exact requested count, the actual count and deviation are retained and validated; it is never silently relabelled.
 
 This yields 35 base workflow structures before infrastructure/scenario replication.
 
@@ -38,55 +38,63 @@ This yields 35 base workflow structures before infrastructure/scenario replicati
 
 Every benchmark instance exposes resources from all three tiers:
 
-- IoT/edge devices: low compute capacity, low monetary cost, constrained energy budget, closest to data origin.
-- Fog resources: medium compute capacity and cost, low-to-moderate network latency to IoT, intermediate energy efficiency.
-- Cloud resources: highest compute capacity and elastic capacity, higher network distance from IoT, explicit usage cost.
+- IoT/edge devices — lower compute, low cost, close to data origin;
+- Fog resources — intermediate compute/cost and low-to-moderate latency to IoT;
+- Cloud resources — highest compute and explicit usage cost, with greater network distance from IoT.
 
-Resources are heterogeneous within a tier; a tier is not represented by one identical machine type.
+Resources are heterogeneous within a tier.
 
 ### 2.4 Scenario profiles
 
-The v1 candidate benchmark separates workflow structure from infrastructure stress. At minimum it contains:
+The v1 benchmark separates workflow structure from infrastructure stress:
 
-1. `balanced` — no single resource dimension is intentionally dominant.
-2. `compute_constrained` — limited fast-resource capacity makes processor selection and queueing important.
-3. `network_constrained` — inter-tier communication delay/energy is emphasized, making placement of dependent tasks important.
+1. `balanced`
+2. `compute_constrained`
+3. `network_constrained`
 
-These profiles change resource/network parameters, not the workflow DAG itself.
+These profiles change resource/network parameters, not the DAG.
 
 ### 2.5 Resource-scale levels
 
-The initial v1 design uses three deterministic infrastructure scales:
+The v1 draft uses deterministic infrastructure scales `S01`, `S02`, and `S03`. Exact composition is committed in configuration and validated before freeze. Algorithms never synthesize their own resource pools.
 
-- `S01` — small
-- `S02` — medium
-- `S03` — large
+### 2.6 Joint QoS profiles
 
-The exact number and composition of IoT, fog, and cloud resources for each scale are defined in `RESOURCE_MODEL.md` and committed configuration. Algorithms must never synthesize their own resource pools.
+Each base workflow/infrastructure realization produces exactly three primary joint deadline-budget profiles:
+
+- `tight`
+- `moderate`
+- `relaxed`
+
+The primary benchmark does not multiply three deadline factors by three independent budget factors. Budget is conditioned on the corresponding deadline so every core instance has a known joint feasibility witness.
+
+The candidate core matrix therefore remains:
+
+`5 families × 7 sizes × 3 resource scales × 3 scenario profiles × 3 seeds × 3 QoS profiles = 2,835 instances`
+
+With seven evaluated algorithms this is `19,845` algorithm-instance runs before repeated stochastic scheduler seeds.
 
 ## 3. Canonical instance model
 
 A benchmark instance is the immutable combination of:
 
-`workflow structure × resource scale × scenario profile × topology seed × constraint profile`
+`workflow structure × resource scale × scenario profile × topology/resource seed × joint QoS profile`
 
 It receives a stable `instance_id` derived from those dimensions. Random generation is allowed only through committed seeds.
 
-Each instance contains the following logical sections.
-
 ### 3.1 Metadata
 
-- dataset version
+At minimum:
+
+- dataset/schema/generator versions
 - instance ID
 - workflow family
-- requested workflow size
-- actual task count
-- workflow/topology seed
+- requested and actual task counts
+- deterministic seeds
 - resource scale
 - scenario profile
-- provenance/source information
-- generator version or commit
-- schema version
+- QoS profile
+- provenance
 - content checksum
 
 ### 3.2 Tasks
@@ -94,90 +102,74 @@ Each instance contains the following logical sections.
 Each task records at least:
 
 - `task_id`
-- computational work requirement in a machine-independent unit
+- machine-independent computational work
 - memory requirement
-- optional tier eligibility/restriction, when justified by the experiment
-- input/output data metadata required for dependency communication
+- optional justified tier eligibility
+- input/output data metadata
 
-Execution time must not be stored as one universal value. It is resource dependent and is either precomputed as an execution-time matrix or reproducibly derived from task work and resource performance.
+Execution time is resource dependent and is either precomputed or reproducibly derived from task work and resource performance.
 
 ### 3.3 Dependencies
 
-Each directed dependency records:
-
-- parent task
-- child task
-- transferred data size in MB
-
-The graph must be acyclic and every referenced task must exist.
+Each directed dependency records parent, child, and transferred data size in MB. The graph must be acyclic and every referenced task must exist.
 
 ### 3.4 Resources
 
-Each resource records at least:
+Each resource records:
 
-- resource ID
-- tier: `iot`, `fog`, or `cloud`
+- ID and tier
 - compute capacity/performance
-- memory capacity
-- maximum/active power
-- idle power if system-wide idle energy is evaluated
-- execution price per second
+- memory
+- active/max power
+- idle power when applicable
+- exact execution price representation
 - availability/concurrency capacity
 
 ### 3.5 Network
 
-For each relevant source-tier/destination-tier or source-resource/destination-resource path, the dataset defines:
-
-- bandwidth
-- propagation/base latency
-- network energy per MB
-- optional network transfer price per MB if a cost experiment requires it
-
-Communication of a dependency assigned to the same resource is zero unless a future benchmark version explicitly models local I/O.
+For each relevant path, define bandwidth, base latency, communication-energy semantics, and optional network monetary price. Same-resource dependency communication is zero in v1.
 
 ### 3.6 Constraints and reference metadata
 
-Each instance stores rather than recomputes during algorithm execution:
+Each instance stores rather than recomputes:
 
-- theoretical makespan lower-bound components
-- deterministic reference makespan
-- deadline factor
-- absolute deadline
-- reference cost statistics needed for any budget profile
-- budget factor and absolute budget once the budget methodology is frozen
-
-This prevents individual algorithms from interpreting constraints differently.
+- theoretical makespan lower-bound components;
+- deterministic HEFT reference makespan;
+- exact rational deadline factor and absolute deadline;
+- HEFT schedule cost;
+- deadline-conditioned feasible cost-floor reference;
+- exact rational budget-gap factor and absolute budget;
+- joint feasibility witness identifier/checksum;
+- calibration scheduler identities/versions.
 
 ## 4. Execution-time model
 
-For task `i` on resource `r`, the canonical execution time is:
+For task `i` on resource `r`:
 
 `E(i,r) = work(i) / performance(r)`
 
-If future empirical calibration introduces resource/task-type coefficients, they must be stored explicitly and versioned. Algorithms are not allowed to substitute private execution-time models.
+Canonical materialization uses a fixed integer time unit such as microseconds, with the rounding policy committed and tested.
 
 ## 5. Communication-time model
 
-For dependency `(i,j)` with data size `d` and resources `r_i`, `r_j`:
+For dependency `(i,j)` with data size `d` and placements `r_i`, `r_j`:
 
-- if `r_i == r_j`, communication time is `0` in v1;
-- otherwise:
+- if `r_i == r_j`, communication time is zero;
+- otherwise communication consists of path base latency plus data-transfer time under the frozen bandwidth model.
 
-`C(i,j,r_i,r_j) = latency(r_i,r_j) + d / bandwidth(r_i,r_j)`
-
-Units must be normalized consistently by the generator and validated.
+Units and conversion/rounding rules are canonical generator behavior, not scheduler-specific choices.
 
 ## 6. Cost model
 
-Compute cost for task `i` on resource `r`:
+V1 cost is normalized rather than presented as contemporary public-cloud currency.
 
-`Cost_compute(i,r) = price_per_sec(r) × E(i,r)`
+Canonical compute cost is represented exactly as integer nano-normalized-cost units. With execution time in integer microseconds:
 
-If a scenario includes network pricing:
+`task_cost_ncu = ceil(price_ncu_per_second × execution_time_us / 1,000,000)`
 
-`Cost_network(i,j) = data_mb(i,j) × network_price_per_mb(r_i,r_j)`
+Schedule cost is the exact integer sum of task costs. V1 network monetary pricing is disabled. Binary floating point is never used to materialize budget/cost fields.
 
-The benchmark must state whether network pricing is enabled for each frozen version.
+Full joint budget rules are in `BUDGET_STRATEGY.md`.
 
 ## 7. Energy model
 
@@ -185,98 +177,101 @@ Task compute energy:
 
 `Energy_compute(i,r) = active_power_w(r) × E(i,r)`
 
-Inter-resource communication energy:
-
-`Energy_network(i,j) = data_mb(i,j) × energy_j_per_mb(r_i,r_j)`
-
-System-wide idle energy is a separate metric/configuration choice and must not be mixed silently with task-attributed energy. The v1 manifest must explicitly state whether idle energy is included.
+Inter-resource communication energy uses the frozen dimensionally valid network-energy model. System-wide idle energy remains a separate metric/configuration choice and cannot be silently mixed with task-attributed energy.
 
 ## 8. Reference makespan and deadlines
 
-The benchmark stores both a lower bound and a feasible calibration reference.
+The benchmark stores a theoretical lower bound and a feasible calibration reference.
 
 ### 8.1 Lower bound
 
-At minimum compute:
-
-- a critical-path lower bound using optimistic resource/communication times;
-- a workload/capacity lower bound.
-
 `T_LB = max(T_CP, T_CAPACITY)`
 
-This is diagnostic only; it is not assumed to be achievable.
+where `T_CP` is an optimistic critical-path bound and `T_CAPACITY` is an aggregate-work/capacity bound. This is diagnostic and is not claimed achievable.
 
 ### 8.2 Reference makespan
 
-`T_ref` is generated by a fixed deterministic calibration scheduler defined before the proposed algorithm is developed. For v1, the candidate calibration scheduler is deterministic HEFT with fixed tie-breaking and the same execution/communication model as the dataset.
+`T_ref` comes from frozen deterministic HEFT with fixed tie-breaking and the same canonical execution/communication model as all schedulers. HEFT is a calibration reference, not an optimum.
 
-HEFT is used only to calibrate a reproducibly feasible reference; it is not treated as the optimum.
+### 8.3 Deadlines
 
-### 8.3 Deadline levels
+The three exact factors are:
 
-Candidate deadline factors are:
+- tight: `5/4`
+- moderate: `3/2`
+- relaxed: `2/1`
 
-- `1.25` — tight
-- `1.50` — moderate
-- `2.00` — relaxed
+`deadline_us = ceil(factor_num × t_ref_us / factor_den)`
 
-For factor `alpha`:
+The HEFT schedule is a deadline-feasibility witness for all three profiles.
 
-`deadline = alpha × T_ref`
+## 9. Budget and joint deadline-budget feasibility
 
-Because `alpha >= 1`, the deterministic calibration schedule provides a known deadline-feasibility witness unless another simultaneous constraint, such as budget, makes the combined case infeasible.
+For each materialized deadline, generate a deterministic cost–makespan calibration candidate set using frozen deterministic MOHEFT (`K=50`) plus explicit HEFT and cheapest-resource-assignment endpoints.
 
-Full rules are in `DEADLINE_STRATEGY.md`.
+Filter candidates to schedules whose makespan satisfies the deadline. Let:
 
-## 9. Replication and random seeds
+`C_floor_ref(D) = minimum exact cost among deadline-feasible calibration candidates`
 
-Workflow topology and infrastructure randomness are separated. Seeds are explicitly committed and reused across algorithms. No algorithm may generate a fresh topology, resource pool, or constraint during an experimental run.
+and let `C_time` be the HEFT schedule cost.
 
-A v1 candidate should include multiple topology/resource seeds per base workflow so conclusions are not tied to one random realization. The exact frozen seed list is committed in `config/benchmark-v1.yaml` before generation.
+The primary QoS profiles use exact rational budget-gap fractions:
 
-## 10. Static first, dynamic later
+- tight: `1/10`
+- moderate: `1/2`
+- relaxed: `9/10`
 
-The core v1 benchmark starts with static scheduling inputs:
+For `beta=p/q`:
 
-- fixed DAG
-- fixed resource capacities
-- fixed network parameters
-- no time-varying background load during a run
+`budget_ncu = C_floor_ref(D) + floor(p × (C_time - C_floor_ref(D)) / q)`
 
-This isolates scheduling quality and makes baseline diagnosis interpretable. Dynamic resource/load scenarios should be introduced as a separately versioned extension after the static benchmark is understood, not mixed into the first comparison.
+The schedule that produced `C_floor_ref(D)` is stored/reproducibly identified as the joint feasibility witness. Therefore every core v1 instance contains at least one schedule satisfying both its deadline and budget.
 
-## 11. Required validation before freezing
+`C_floor_ref(D)` is only the cheapest cost found by the frozen calibration set; it is not claimed globally optimal.
+
+Full rules are in `BUDGET_STRATEGY.md`.
+
+## 10. Replication and random seeds
+
+Workflow, resource, network, and constraint random streams are separated and explicitly seeded. No evaluated algorithm generates a fresh topology, resource pool, or constraint.
+
+## 11. Static first, dynamic later
+
+Core v1 uses fixed DAGs, resources, network parameters, and no time-varying background load. Dynamic load/resource scenarios belong to a separately versioned extension.
+
+## 12. Required validation before freezing
 
 Every candidate instance must pass:
 
-- DAG acyclicity
-- unique task/resource IDs
-- all dependency endpoints exist
-- positive task work/data sizes where required
-- positive compute/memory/network capacities
-- nonnegative latency, price, and energy parameters
-- finite execution time for every eligible task-resource pair
-- at least one eligible resource for every task
-- deterministic regeneration from seed/configuration
-- reference schedule validity
-- deadline consistency with stored `T_ref`
-- manifest/checksum consistency
+- DAG acyclicity and unique IDs;
+- valid dependency endpoints;
+- positive/valid work, capacity, and network fields;
+- finite execution for every eligible task-resource pair;
+- at least one eligible resource per task;
+- deterministic regeneration;
+- reference schedule validity;
+- exact deadline reconstruction;
+- exact cost/budget reconstruction;
+- nonempty deadline-feasible calibration set;
+- valid joint feasibility witness satisfying both deadline and budget;
+- explicit reporting of degenerate budget ranges;
+- manifest/checksum consistency.
 
-The full dataset is frozen only after aggregate distribution checks are also reviewed across families, sizes, resource scales, profiles, and deadline levels.
+Aggregate distribution checks across families, sizes, scales, scenarios, seeds, and QoS profiles are also required.
 
-## 12. Experiment contract
+## 13. Experiment contract
 
-After freeze, schedulers may read the dataset and produce schedules/results, but may not modify benchmark inputs. Any semantic change to the generator, schema, resource model, reference calculation, seed set, or constraint calculation requires a new dataset version.
+After freeze, schedulers may read benchmark inputs and produce results but may not modify them. Any semantic change to workflow normalization, generator, schema, resources, cost/energy/network model, references, seeds, or constraint calculation requires a new dataset version.
 
-## 13. Open items before v1 freeze
+## 14. Open items before v1 freeze
 
-The following remain explicit design items, not hidden assumptions:
+Still unresolved and intentionally visible:
 
-- exact IoT/Fog/Cloud resource counts and performance/power/cost ranges per `S01`/`S02`/`S03`;
-- exact deterministic seed list and number of replications;
-- whether v1 compute energy includes idle energy;
-- whether network monetary cost is enabled;
-- budget-reference and budget-factor methodology;
-- exact tolerance allowed between requested and generated workflow size.
+- final evidence-backed IoT/Fog/Cloud numeric performance/power/cost ranges;
+- final network bandwidth/latency/energy values;
+- tolerance/rule for requested versus generated workflow size;
+- pilot validation of S01/S02/S03 resource composition;
+- validation that MOHEFT `K=50` yields sufficiently nondegenerate cost ranges;
+- exact network-energy model/source.
 
-These must be resolved before generation is declared final.
+The deadline-budget methodology itself is now defined, subject to pilot validation rather than arbitrary post-hoc tuning.
