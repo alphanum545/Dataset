@@ -1,0 +1,69 @@
+dataset:
+  name: ifc-workflow-benchmark
+  version: v1-draft
+  status: specification
+
+workflows:
+  families:
+    - montage
+    - cybershake
+    - ligo
+    - sipht
+    - genome
+  requested_task_counts: [50, 100, 200, 400, 600, 800, 1000]
+  allowed_size_deviation: null  # must be decided before freeze
+
+infrastructure:
+  resource_scales:
+    S01:
+      iot: 4
+      fog: 4
+      cloud: 2
+    S02:
+      iot: 8
+      fog: 8
+      cloud: 4
+    S03:
+      iot: 16
+      fog: 16
+      cloud: 8
+  scenario_profiles:
+    - balanced
+    - compute_constrained
+    - network_constrained
+
+replications:
+  seeds: [101, 202, 303]
+  independent_rng_streams:
+    - workflow
+    - resource
+    - network
+    - constraint
+
+scheduling_input:
+  mode: static
+  same_resource_communication_time_zero: true
+  same_resource_network_energy_zero: true
+  idle_energy_in_primary_compute_energy: false
+  network_monetary_cost_enabled: false
+
+reference_makespan:
+  lower_bound_components:
+    - optimistic_critical_path
+    - aggregate_capacity
+  calibration_scheduler: deterministic_heft
+  deadline_factors:
+    tight: 1.25
+    moderate: 1.50
+    relaxed: 2.00
+
+budget:
+  enabled: false
+  strategy: pending
+
+freeze_requirements:
+  require_schema_validation: true
+  require_semantic_validation: true
+  require_deterministic_regeneration: true
+  require_reference_schedule_validation: true
+  require_checksums: true
