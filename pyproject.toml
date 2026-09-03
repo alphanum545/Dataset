@@ -12,6 +12,10 @@ dependencies = ["PyYAML>=6.0,<7"]
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
 
+[tool.setuptools.packages.find]
+include = ["generator*"]
+exclude = ["config*", "docs*", "tests*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
