@@ -1,29 +1,44 @@
-# Reproducibility and Freeze Policy — v1 Draft
+# Reproducibility and Freeze Policy — v1 Pilot Candidate
 
 ## Principle
 
-A benchmark result is meaningful only if another implementation can reconstruct the same scheduling input. Every source of randomness must therefore be explicit, versioned, and materialized into the frozen dataset.
+A benchmark result is meaningful only if another implementation can reconstruct the same scheduling input. Every source of randomness owned by the IFC benchmark must therefore be explicit, versioned, and materialized.
 
-## Seed separation
+The legacy upstream Pegasus/Bharathi source generator is treated differently: its accepted raw DAX outputs are frozen as immutable source artifacts because the pinned implementation contains unseeded randomness. See `SOURCE_WORKFLOW_ACQUISITION.md`.
 
-Use independent deterministic seeds for logically different stochastic processes:
+## Source-workflow reproducibility boundary
 
-- `workflow_seed` — workflow/topology generation where the source generator supports randomness;
-- `resource_seed` — heterogeneous resource parameter realization;
-- `network_seed` — network realization when parameters are sampled rather than fixed by profile;
-- `constraint_seed` — reserved for future stochastic constraint generation.
+Core v1 contains three frozen source-workflow replicates per family/size:
 
-Do not reuse one global RNG stream for all components. Adding a new random draw in one component must not silently change unrelated benchmark dimensions.
+- `r01`
+- `r02`
+- `r03`
 
-## Candidate v1 seed set
+A source replicate is identified by its raw DAX checksum and acquisition provenance. It is **not** represented as an upstream workflow RNG seed.
 
-For the first candidate generation pass, use three replications:
+The IFC dataset generator must reproduce the same normalized benchmark inputs from the committed raw DAX artifacts and benchmark configuration.
 
-- 101
-- 202
-- 303
+## Benchmark-owned seed separation
 
-These are intentionally simple stable identifiers. They remain candidate values until the resource parameter distributions and workflow generator behaviour are validated.
+Use independent deterministic RNG streams for benchmark-owned stochastic processes:
+
+- `resource_seed` — filling heterogeneous resource-class slots after mandatory class coverage;
+- `network_seed` — reserved for any future sampled network realization; current pilot segment values are fixed;
+- `constraint_seed` — reserved for future stochastic constraints; current deadline/budget profiles are deterministic.
+
+Do not reuse one global RNG stream for all components. Adding a random draw in one component must not silently change unrelated dimensions.
+
+## V1 realization mapping
+
+Each frozen source replicate maps to one deterministic IFC realization seed:
+
+| Source replicate | IFC realization seed |
+| --- | ---: |
+| `r01` | `101` |
+| `r02` | `202` |
+| `r03` | `303` |
+
+The mapping is stable and committed in configuration.
 
 ## Stable instance identity
 
@@ -31,79 +46,116 @@ An instance ID must encode or deterministically derive from:
 
 - dataset version;
 - workflow family;
-- requested workflow size;
-- actual task count;
+- exact workflow size;
+- source replicate ID and source checksum;
 - resource scale;
 - scenario profile;
-- replication/seed ID;
-- deadline level;
-- budget level when enabled.
+- IFC realization seed;
+- joint QoS profile.
 
-Human-readable fields should be present in the manifest even if the final ID also contains a hash.
+Human-readable fields are present in the manifest even if the final identifier includes a hash.
 
 ## Materialization rule
 
-Algorithms consume generated files, not generator RNGs. Each frozen instance must include the concrete:
+Algorithms consume generated files, not RNGs. Each frozen instance includes the concrete:
 
 - DAG/tasks/dependencies;
+- source-workflow checksum/provenance;
 - resource pool;
-- network matrix;
-- execution-time matrix or all data needed to deterministically derive it;
+- routed network values;
+- execution-time matrix or exact derivation inputs;
 - cost and energy parameters;
 - reference values;
-- deadline/budget values.
+- deadline/budget values and witness metadata.
 
-## Manifest
+## Source manifest
 
-A version manifest must include at least:
+The raw source-workflow manifest includes at least:
+
+- upstream repository;
+- pinned upstream commit;
+- family;
+- exact target/actual job count;
+- replicate ID;
+- acquisition attempt index;
+- raw DAX relative path;
+- SHA-256 checksum;
+- acquisition command/environment metadata;
+- structural validation status.
+
+## Dataset manifest
+
+A dataset-version manifest includes at least:
 
 - dataset version;
 - schema version;
 - generator commit SHA;
 - configuration checksum;
-- instance count;
-- expected dimension counts;
+- source-manifest checksum;
+- instance count and expected dimension counts;
 - one entry per instance;
-- relative instance path;
+- relative path;
 - instance checksum;
+- source replicate/checksum;
+- resource/scenario/QoS identifiers;
 - provenance;
-- generation timestamp in UTC;
+- generation timestamp in UTC outside deterministic content where appropriate;
 - validation status.
 
 ## Determinism verification
 
-Before freeze, generate the same candidate dataset twice from a clean environment and compare normalized file checksums. Any mismatch must be explained or treated as a defect.
+Before freeze:
 
-Generated timestamps must not be included in content checksums if they prevent byte-for-byte reproducibility; place volatile provenance in the manifest or normalize it consistently.
+1. start from the same committed source DAX set, configuration, and generator commit;
+2. generate the full candidate dataset twice from clean environments;
+3. normalize intentionally volatile metadata;
+4. compare file checksums;
+5. treat any unexplained mismatch as a defect.
+
+The project does **not** require the legacy upstream Bharathi acquisition process to regenerate the same raw DAX bytes. Its committed raw artifacts are the source boundary.
+
+## Exactness rules
+
+Materialized values use committed units and deterministic rounding:
+
+- execution time: integer microseconds;
+- compute energy: integer nanojoules;
+- network energy: integer picojoules;
+- normalized cost/budget: integer nCU;
+- rational multipliers represented by integer numerator/denominator.
+
+Binary floating point must not become the authoritative representation for cost/budget or exact reference reconstruction.
 
 ## Freeze policy
 
 A version can be tagged/frozen only when:
 
-1. all schemas validate;
-2. all semantic validators pass;
-3. deterministic regeneration is verified;
-4. aggregate dimension counts match the specification;
-5. reference schedules validate;
-6. constraint calculations validate;
-7. checksums are generated;
-8. the configuration and generator commit are recorded.
+1. all 105 expected raw source artifacts exist and source validation passes;
+2. source checksums/manifests validate;
+3. all generated schemas validate;
+4. all semantic validators pass;
+5. deterministic IFC regeneration is verified;
+6. aggregate dimensions match specification;
+7. reference schedules validate;
+8. deadline/budget calculations and joint witnesses validate;
+9. pilot numerical freeze gates pass;
+10. configuration, source manifest, and generator commit are recorded.
 
-After freeze, benchmark input files are immutable. Corrections require a new dataset version and a changelog describing whether results from the old and new versions are comparable.
+After freeze, raw source workflows and benchmark instance files are immutable. Corrections require a new dataset version.
 
 ## Experiment output separation
 
-Algorithm outputs must not be written into frozen input directories. Experimental results should live in a separate repository/directory or a clearly separate results tree so rerunning experiments cannot mutate the benchmark.
+Algorithm outputs must not be written into frozen input directories. Experimental results belong in a separate results tree/repository so rerunning experiments cannot mutate benchmark inputs.
 
 ## Baseline fairness
 
-Every algorithm run must record:
+Every algorithm run records:
 
 - dataset version;
 - instance ID;
 - algorithm name/version/commit;
 - parameter configuration;
-- random seed used by the algorithm itself, if stochastic;
+- algorithm RNG seed if stochastic;
 - schedule/result checksum where practical.
 
-Algorithm randomness is independent of dataset randomness. Repeated algorithm runs may use multiple algorithm seeds, but all runs still consume the exact same frozen benchmark instance.
+Algorithm randomness is independent of benchmark realization. Repeated algorithm runs may use multiple algorithm seeds, but every algorithm consumes the exact same frozen benchmark instance for a given `instance_id`.
