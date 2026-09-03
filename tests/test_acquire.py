@@ -59,9 +59,11 @@ def test_acquisition_accepts_first_three_distinct_structurally_valid_exact_outpu
         dax(2, marker="three"),
     ])
 
+    requests: list[int] = []
+
     def runner(command: list[str], cwd: Path) -> CommandResult:
         assert command[:4] == ["bin/AppGenerator", "-a", "MONTAGE", "-n"]
-        assert command[4] == "2"
+        requests.append(int(command[4]))
         return CommandResult(stdout=next(outputs), stderr=b"", returncode=0)
 
     manifest = acquire_source_workflows(
@@ -74,10 +76,34 @@ def test_acquisition_accepts_first_three_distinct_structurally_valid_exact_outpu
 
     assert manifest["artifact_count"] == 3
     assert [entry["acquisition_attempt"] for entry in manifest["entries"]] == [2, 2, 1]
+    assert [entry["requested_numjobs"] for entry in manifest["entries"]] == [3, 3, 2]
+    assert requests == [2, 3, 2, 3, 2]
     assert len({entry["sha256"] for entry in manifest["entries"]}) == 3
     assert [entry["replicate_id"] for entry in manifest["entries"]] == ["r01", "r02", "r03"]
     for entry in manifest["entries"]:
         assert (tmp_path / "source_workflows" / entry["path"]).is_file()
+
+
+def test_acquisition_searches_upward_until_actual_count_matches_target(tmp_path):
+    config = base_config()
+    config["workflows"]["source_replicates"] = ["r01"]
+    config["source_workflows"]["expected_raw_artifacts"] = 1
+
+    def runner(command: list[str], cwd: Path) -> CommandResult:
+        requested = int(command[4])
+        actual = 2 if requested == 4 else 1
+        return CommandResult(stdout=dax(actual, marker=f"req-{requested}"), stderr=b"", returncode=0)
+
+    manifest = acquire_source_workflows(
+        config,
+        upstream_dir=upstream(tmp_path),
+        output_root=tmp_path / "source_workflows",
+        manifest_path=tmp_path / "manifest.json",
+        runner=runner,
+    )
+    assert manifest["entries"][0]["target_task_count"] == 2
+    assert manifest["entries"][0]["requested_numjobs"] == 4
+    assert manifest["entries"][0]["actual_task_count"] == 2
 
 
 def test_acquisition_rejects_dimension_count_mismatch(tmp_path):
