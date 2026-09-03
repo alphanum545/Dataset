@@ -1,31 +1,92 @@
 # IFC Workflow Benchmark Dataset
 
-This repository is the canonical dataset repository for the Intelligent Workflow Scheduling in IoT–Fog–Cloud research project.
+This repository is the canonical dataset repository for the Intelligent Workflow Scheduling in IoT-Fog-Cloud research project.
 
 ## Research principle
 
-The benchmark dataset must be designed and frozen before any proposed scheduling algorithm is tuned against it. Every baseline and future algorithm must consume the same immutable instances, resource descriptions, constraints, and reference values.
+The benchmark dataset is designed and frozen before any proposed scheduling algorithm is tuned against it. Every baseline and future algorithm consumes the same immutable workflow instances, resources, network conditions, constraints, and reference values.
 
 ## Current stage
 
-**Stage 1 — Dataset specification**
+**Stage 1 complete in draft — pilot specification is implementation-ready.**
 
-The v1 draft now defines the candidate benchmark dimensions, reference-makespan/deadline methodology, IoT–Fog–Cloud resource model, and reproducibility/freeze rules. Dataset generation has not started yet.
+The v1 pilot candidate now defines:
 
-### Candidate v1 matrix
+- five Pegasus/Bharathi workflow families;
+- seven exact task-count levels;
+- three frozen source-workflow replicates per family/size;
+- three IoT/Fog/Cloud resource scales;
+- balanced, compute-constrained, and network-constrained profiles;
+- exact execution, cost, compute-energy, and routed network-energy units;
+- deterministic HEFT reference makespan/deadlines;
+- deadline-conditioned budget calibration and joint-feasibility witnesses;
+- source acquisition, reproducibility, validation, and freeze rules.
+
+No benchmark instance is frozen yet. The next stage is deterministic generator/validator implementation followed by pilot generation.
+
+## Candidate v1 matrix
 
 - Workflow families: Montage, CyberShake, LIGO, SIPHT, Genome
-- Workflow sizes: 50, 100, 200, 400, 600, 800, 1000 tasks
+- Exact workflow sizes: 50, 100, 200, 400, 600, 800, 1000 tasks
+- Frozen source replicates: r01, r02, r03
 - Resource scales: S01, S02, S03
 - Scenario profiles: balanced, compute-constrained, network-constrained
-- Replication seeds: 101, 202, 303
-- Deadline levels: 1.25×, 1.50×, 2.00× deterministic reference makespan
+- Joint QoS profiles: tight, moderate, relaxed
 
-If each deadline level is materialized as a separate scheduling instance, the candidate matrix contains:
+Source workflows:
 
-`5 × 7 × 3 × 3 × 3 × 3 = 2,835 instances`
+`5 × 7 × 3 = 105 frozen raw DAX artifacts`
 
-With seven algorithms, that corresponds to `19,845` algorithm-instance runs before repeated stochastic algorithm seeds are added.
+Benchmark instances:
+
+`105 × 3 resource scales × 3 profiles × 3 QoS profiles = 2,835 instances`
+
+With seven algorithms:
+
+`2,835 × 7 = 19,845 algorithm-instance runs`
+
+before repeated stochastic algorithm seeds are added.
+
+## Source workflow policy
+
+V1 pins the legacy Pegasus `WorkflowGenerator` Bharathi implementation at commit:
+
+`bb1f8d43fe203f5c2cb209540531998af52000ea`
+
+The upstream implementation supports all five required scientific-workflow families and derives workflow structure/runtime/file-size distributions from real workflows. Because the legacy code contains unseeded randomness, v1 does not claim upstream seed reproducibility. Instead, the first three structurally valid exact-size DAX artifacts for each family/size are frozen and checksum-addressed.
+
+See `docs/SOURCE_WORKFLOW_ACQUISITION.md`.
+
+## Pilot IFC resource model
+
+Scheduler-visible resources are serial execution slots (`concurrency_slots = 1`) so all baseline algorithms receive compatible processor semantics.
+
+Pilot class envelopes:
+
+- IoT: 500–1000 MIPS
+- Fog: 1000–2000 MIPS
+- Cloud: 3000–5000 MIPS
+
+The numerical model uses explicit integer units:
+
+- execution time: microseconds
+- compute energy: nanojoules
+- network energy: picojoules
+- normalized cost/budget: nano-normalized-cost units
+
+Communication is routed through explicit wireless/LAN/backbone segments rather than using an unexplained J/MB constant.
+
+These numerical values are pilot candidates and must pass sensitivity/trade-off validation before dataset freeze.
+
+## Joint QoS profiles
+
+Each core instance has a paired deadline and budget:
+
+- tight: deadline `5/4 × T_ref`, budget gap `1/10`
+- moderate: deadline `3/2 × T_ref`, budget gap `1/2`
+- relaxed: deadline `2 × T_ref`, budget gap `9/10`
+
+Budget is measured between the cheapest calibration schedule known to satisfy the corresponding deadline and deterministic HEFT cost. Every core instance therefore requires a stored/reproducible schedule satisfying both deadline and budget.
 
 ## Repository structure
 
@@ -36,10 +97,15 @@ Dataset/
 ├── docs/
 │   ├── DATASET_SPECIFICATION.md
 │   ├── DEADLINE_STRATEGY.md
+│   ├── BUDGET_STRATEGY.md
 │   ├── RESOURCE_MODEL.md
+│   ├── WORKFLOW_MODEL.md
+│   ├── SOURCE_WORKFLOW_ACQUISITION.md
+│   ├── PARAMETER_PROVENANCE.md
 │   └── REPRODUCIBILITY.md
 ├── config/
 │   └── benchmark-v1.yaml
+├── source_workflows/
 ├── generator/
 ├── schemas/
 ├── validation/
@@ -48,36 +114,18 @@ Dataset/
 └── tests/
 ```
 
-## Current design documents
-
-- `docs/DATASET_SPECIFICATION.md` — complete candidate benchmark contract and instance model.
-- `docs/DEADLINE_STRATEGY.md` — lower bounds, deterministic HEFT reference makespan, and deadline factors.
-- `docs/RESOURCE_MODEL.md` — IoT/Fog/Cloud tiers, resource scales, scenario profiles, cost/energy/network semantics.
-- `docs/REPRODUCIBILITY.md` — seed separation, deterministic regeneration, manifests, and freeze policy.
-- `config/benchmark-v1.yaml` — machine-readable candidate benchmark matrix.
-
-## Decisions still required before v1 freeze
-
-The following are deliberately not hidden behind arbitrary constants:
-
-- exact compute/memory/power/price ranges per tier;
-- exact network bandwidth/latency/energy values;
-- tolerance for requested versus generated workflow task count;
-- final validation of the S01/S02/S03 resource counts;
-- budget-reference and budget-factor methodology;
-- literature/provenance support for numerical parameter ranges.
-
 ## Experimental workflow
 
-1. Specify and review the benchmark.
-2. Lock supported numerical ranges using literature/specification evidence.
-3. Implement a deterministic generator and schemas.
-4. Validate generated candidate instances and distributions.
-5. Freeze dataset version 1.
-6. Run every baseline algorithm on the same frozen instances.
-7. Analyse scheduling failures, constraint violations, and trade-offs.
-8. Formulate the novel algorithm only after those empirical weaknesses are understood.
+1. Specify and review benchmark semantics. **Current**
+2. Implement deterministic source validation, normalization, resource/network generation, calibration, and schemas.
+3. Acquire/freeze the 105 source DAX artifacts using the predeclared acceptance rule.
+4. Generate a small pilot benchmark and inspect distributions/trade-offs.
+5. Adjust only predeclared pilot parameters if validation demonstrates a benchmark-design problem.
+6. Generate and freeze dataset v1.
+7. Run every baseline algorithm on the same frozen instances.
+8. Analyse failures, constraint violations, placement behavior, cost/energy trade-offs, and scaling.
+9. Formulate the novel algorithm only after those weaknesses are empirically understood.
 
 ## Status
 
-The candidate v1 benchmark specification is now under review on a feature branch. No generated benchmark instance is frozen yet.
+The v1 pilot specification is implementation-ready but **not frozen**. No generated IFC benchmark input has been declared final yet.

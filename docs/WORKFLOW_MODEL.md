@@ -1,14 +1,24 @@
-# Workflow Normalization Model — v1 Draft
+# Workflow Normalization Model — v1 Pilot Candidate
 
-## Source
+## Source boundary
 
-The benchmark uses synthetic scientific workflows from the Pegasus WorkflowGenerator lineage for the five selected families. The upstream generator documentation states that its workflow models are parameterized using file-size and task-runtime data from execution logs and workflow publications. The legacy repository is no longer maintained, so the exact generator/version used for v1 must be recorded in provenance and frozen with the dataset.
+The benchmark uses frozen synthetic scientific workflows from the Pegasus WorkflowGenerator Bharathi lineage for:
+
+- Montage
+- CyberShake
+- LIGO
+- SIPHT
+- Genome
+
+The pinned upstream revision and source-acquisition rules are defined in `SOURCE_WORKFLOW_ACQUISITION.md`.
+
+The upstream generator's raw DAX files are immutable source artifacts once accepted. IFC normalization does not rerun the legacy generator during normal dataset regeneration.
 
 ## Goal
 
-Preserve the structural and workload characteristics of the source scientific workflows while converting them into one algorithm-neutral representation suitable for heterogeneous IoT-Fog-Cloud scheduling.
+Preserve the structural, runtime, and file-size characteristics of the source scientific workflows while converting them into one algorithm-neutral representation suitable for heterogeneous IoT-Fog-Cloud scheduling.
 
-The normalization process must not replace source runtimes and file sizes with unrelated random task lengths or communication volumes.
+The normalizer must not replace source runtimes and file sizes with unrelated random task lengths or communication volumes.
 
 ## Canonical DAG
 
@@ -20,43 +30,65 @@ Each normalized workflow contains:
 - source input/output file metadata when available;
 - a derived machine-independent work value;
 - a derived edge data-transfer size;
-- workflow-family and generator provenance.
+- workflow-family and source-artifact provenance.
 
-The normalized DAG must remain acyclic and preserve source precedence semantics.
+The normalized DAG remains acyclic and preserves source precedence semantics.
+
+## Frozen source replicates
+
+For every family and exact target size, v1 uses three raw source artifacts:
+
+- `r01`
+- `r02`
+- `r03`
+
+The source replicate identity is anchored by SHA-256 checksum, not an unsupported upstream RNG seed.
+
+This produces `5 × 7 × 3 = 105` normalized base workflows.
+
+## Exact task-count rule
+
+Core v1 size labels are exact actual task counts:
+
+- 50
+- 100
+- 200
+- 400
+- 600
+- 800
+- 1000
+
+The acquisition stage passes the desired count through the Bharathi application's `--numjobs/-n` option and accepts only DAX artifacts whose parsed job count equals the target exactly.
+
+`allowed_size_deviation = 0`.
+
+There is no percentage tolerance and no silent relabelling. If a family/size cannot produce an exact valid artifact within the bounded acquisition rule, acquisition fails for explicit review.
 
 ## Task work derivation
 
-Scientific workflow generators commonly expose a runtime estimate for each generated job. A single runtime cannot be used directly as the execution time on every heterogeneous resource.
-
-For v1, normalize source runtime into machine-independent work using a fixed reference performance:
-
-`task_work_mi = source_runtime_s × reference_mips`
-
-Candidate reference:
+For v1, normalize source runtime into machine-independent work using:
 
 `reference_mips = 1000`
 
-This does not claim that the source workflow originally ran on a 1000-MIPS processor. It is a unit-conversion convention that preserves relative source runtime while allowing resource-dependent execution times.
+For a task whose source runtime is `source_runtime_s`:
+
+`task_work_mi = source_runtime_s × 1000`
+
+This is a unit-normalization convention. It is not a claim that the original task executed on a historical 1000-MIPS processor.
 
 For resource `r`:
 
-`execution_time_s(i,r) = task_work_mi(i) / resource_mips(r)`
+`execution_time_us(i,r) = ceil(task_work_mi(i) × 1,000,000 / mips(r))`
 
-The reference MIPS value must be stored in dataset metadata and configuration. Changing it after freeze requires a new dataset version.
+The authoritative materialized execution-time unit is integer microseconds.
 
-## Why this approach
+### Runtime decimal handling
 
-This keeps three important properties:
-
-1. relative task heaviness from the source workflow is preserved;
-2. heterogeneous resources produce different task execution times;
-3. all schedulers receive exactly the same execution model.
-
-Using fresh random instruction counts would discard workload information already present in the workflow generator.
+Source runtime text is parsed with exact-decimal semantics. The generator must not round-trip runtime through binary floating point before computing canonical work/execution values. The exact decimal text or normalized decimal representation and derivation version are retained in provenance.
 
 ## Dependency data derivation
 
-Communication volume for a precedence edge should be derived from files produced by the parent and consumed by the child whenever the source representation provides file-level dependencies.
+Communication volume for a precedence edge is derived from files produced by the parent and consumed by the child whenever source file metadata establishes the linkage.
 
 For edge `(parent, child)`:
 
@@ -64,78 +96,72 @@ For edge `(parent, child)`:
 
 for files that are outputs of `parent` and inputs of `child`.
 
-Then:
+V1 uses decimal megabytes for descriptive data-size fields:
 
-`edge_data_mb = edge_data_bytes / 1_000_000`
+`edge_data_mb = edge_data_bytes / 1,000,000`
 
-The generator must document whether decimal MB or MiB is used and apply that convention everywhere. Candidate v1 uses decimal MB.
+For exact communication calculations, the generator uses integer bytes/bits rather than the rounded/display MB value:
+
+`edge_data_bits = edge_data_bytes × 8`
 
 ## Missing or ambiguous file linkage
 
-Do not silently invent edge sizes. If the source workflow format cannot establish a parent-child shared-file set, the normalizer must apply a documented fallback policy and mark the edge with provenance such as `data_size_source: fallback`.
+Do not silently invent edge sizes.
 
-The preferred fallback hierarchy is:
+Fallback hierarchy:
 
-1. explicit shared-file size from source metadata;
-2. workflow-family empirical distribution supplied by the source generator/model;
-3. deterministic seeded fallback distribution defined by v1 configuration.
+1. explicit shared-file size from the frozen source DAX;
+2. workflow-family distribution that is itself part of the pinned source model and can be reconstructed without arbitrary new assumptions;
+3. otherwise mark the source artifact unsupported for core v1 and fail source/normalization validation.
 
-The fraction of fallback-derived edges must be reported during validation. If it is large, the workflow source/normalization method should be reconsidered before freeze.
+Core v1 does **not** introduce a generic seeded edge-size distribution merely to make an unsupported source pass.
+
+The fraction of directly derived versus fallback-derived edges is reported. Any fallback mechanism used must be versioned and separately identifiable.
 
 ## Entry and exit data
 
-External input files for entry tasks and final outputs from exit tasks are retained as task metadata. They are not DAG edge communication unless the scheduling model explicitly includes transfer to/from an IoT data origin or sink.
+External input files for entry tasks and final outputs from exit tasks are retained as metadata. They are not automatically counted as internal DAG-edge communication.
 
-For v1, workflow-internal dependency communication and external ingress/egress should remain separate fields so later experiments can decide whether ingress/egress belongs in makespan, cost, and energy objectives.
+Core v1 evaluates workflow-internal dependency communication only. External ingress/egress can be introduced later as a separately versioned experiment if origin/sink semantics are defined consistently for all workflow families.
 
-## Requested versus actual task count
-
-The benchmark has requested size levels of 50, 100, 200, 400, 600, 800, and 1000 tasks. The generator must record:
-
-- requested task count;
-- actual normalized task count;
-- absolute and relative deviation.
-
-No workflow may be relabelled as an exact size if the source generator produced a materially different node count.
-
-The allowed deviation tolerance remains an explicit pre-freeze decision.
-
-## Determinism
-
-The normalizer must produce byte-equivalent canonical task/dependency values from the same source workflow, configuration, and seed after volatile metadata is normalized.
-
-Stable ordering rules:
+## Stable normalization ordering
 
 - tasks sorted by canonical task ID;
 - dependencies sorted by `(parent_id, child_id)`;
 - file metadata sorted by stable file identifier/path;
-- numeric rounding policy fixed in schema/configuration.
+- resource-independent task fields serialized canonically;
+- integers serialized as integers;
+- exact decimal source values normalized through one documented decimal policy.
 
 ## Validation
 
-For every normalized workflow:
+For every frozen raw and normalized workflow:
 
+- raw source checksum matches source manifest;
+- actual task count equals the declared target exactly;
+- three replicates per family/size are checksum-distinct;
 - DAG is acyclic;
 - all task IDs are unique;
 - every edge endpoint exists;
-- every source runtime used for work derivation is finite and positive;
-- every derived work value is finite and positive;
-- every edge data size is finite and nonnegative;
-- provenance records whether runtime/data values were direct or fallback-derived;
-- actual task count is reported and checked against requested size;
-- regeneration produces identical normalized content.
+- source runtimes used for work derivation are finite and positive;
+- derived work and execution matrices are positive and reconstructible;
+- every edge data size is nonnegative and provenance-labelled;
+- no scheduler result influenced source-artifact acceptance;
+- normalized regeneration from the same raw source and configuration produces identical content/checksum.
 
 ## Provenance to record
 
 At minimum:
 
 - workflow family;
-- source generator project;
-- generator version/commit or release;
-- generator command/options;
-- source workflow seed;
+- pinned source repository and commit;
+- raw DAX path and SHA-256;
+- source replicate ID;
+- acquisition attempt index;
+- acquisition command/options;
+- exact target and actual task count;
 - normalization code commit;
-- reference MIPS conversion value;
-- MB conversion convention;
-- fallback policy/version;
+- reference MIPS;
+- decimal MB convention;
+- edge-data derivation status;
 - normalized workflow checksum.
