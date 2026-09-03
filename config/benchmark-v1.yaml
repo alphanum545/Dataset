@@ -46,6 +46,14 @@ scheduling_input:
   same_resource_network_energy_zero: true
   idle_energy_in_primary_compute_energy: false
   network_monetary_cost_enabled: false
+  execution_time_unit: microsecond
+
+cost_model:
+  representation: integer
+  unit: nano_normalized_cost_unit
+  scale_per_normalized_cost_unit: 1000000000
+  resource_price_field: price_ncu_per_second
+  task_cost_rounding: ceil
 
 reference_makespan:
   lower_bound_components:
@@ -53,17 +61,55 @@ reference_makespan:
     - aggregate_capacity
   calibration_scheduler: deterministic_heft
   deadline_factors:
-    tight: 1.25
-    moderate: 1.50
-    relaxed: 2.00
+    tight:
+      numerator: 5
+      denominator: 4
+    moderate:
+      numerator: 3
+      denominator: 2
+    relaxed:
+      numerator: 2
+      denominator: 1
+  deadline_rounding: ceil
 
 budget:
-  enabled: false
-  strategy: pending
+  enabled: true
+  strategy: deadline_conditioned_feasible_cost_range
+  calibration:
+    frontier_scheduler: deterministic_moheft
+    tradeoff_solutions: 50
+    objectives:
+      - makespan
+      - compute_cost
+    explicit_endpoints:
+      - deterministic_heft
+      - cheapest_resource_assignment
+    deterministic_tie_breaking: true
+  joint_qos_profiles:
+    tight:
+      deadline_level: tight
+      budget_gap_fraction:
+        numerator: 1
+        denominator: 10
+    moderate:
+      deadline_level: moderate
+      budget_gap_fraction:
+        numerator: 1
+        denominator: 2
+    relaxed:
+      deadline_level: relaxed
+      budget_gap_fraction:
+        numerator: 9
+        denominator: 10
+  budget_interpolation_rounding: floor
+  require_known_joint_feasibility_witness: true
+  intentionally_infeasible_core_instances: false
+  report_degenerate_budget_ranges: true
 
 freeze_requirements:
   require_schema_validation: true
   require_semantic_validation: true
   require_deterministic_regeneration: true
   require_reference_schedule_validation: true
+  require_joint_deadline_budget_witness_validation: true
   require_checksums: true
