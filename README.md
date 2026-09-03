@@ -10,7 +10,7 @@ The benchmark dataset must be designed and frozen before any proposed scheduling
 
 **Stage 1 — Dataset specification**
 
-The v1 draft now defines the candidate benchmark dimensions, reference-makespan/deadline methodology, IoT–Fog–Cloud resource model, and reproducibility/freeze rules. Dataset generation has not started yet.
+The v1 draft now defines the candidate benchmark dimensions, reference-makespan/deadline methodology, deadline-conditioned budget methodology, IoT–Fog–Cloud resource model, and reproducibility/freeze rules. Dataset generation has not started yet.
 
 ### Candidate v1 matrix
 
@@ -19,9 +19,17 @@ The v1 draft now defines the candidate benchmark dimensions, reference-makespan/
 - Resource scales: S01, S02, S03
 - Scenario profiles: balanced, compute-constrained, network-constrained
 - Replication seeds: 101, 202, 303
-- Deadline levels: 1.25×, 1.50×, 2.00× deterministic reference makespan
+- Joint QoS profiles: tight, moderate, relaxed
 
-If each deadline level is materialized as a separate scheduling instance, the candidate matrix contains:
+Each joint QoS profile has a paired deadline and budget:
+
+- tight: deadline `5/4 × T_ref`, budget gap `1/10`
+- moderate: deadline `3/2 × T_ref`, budget gap `1/2`
+- relaxed: deadline `2 × T_ref`, budget gap `9/10`
+
+The budget gap is measured between the cheapest calibration schedule known to satisfy that deadline and the deterministic HEFT schedule cost. Each primary instance therefore has a stored joint deadline-budget feasibility witness.
+
+The candidate matrix contains:
 
 `5 × 7 × 3 × 3 × 3 × 3 = 2,835 instances`
 
@@ -36,7 +44,10 @@ Dataset/
 ├── docs/
 │   ├── DATASET_SPECIFICATION.md
 │   ├── DEADLINE_STRATEGY.md
+│   ├── BUDGET_STRATEGY.md
 │   ├── RESOURCE_MODEL.md
+│   ├── WORKFLOW_MODEL.md
+│   ├── PARAMETER_PROVENANCE.md
 │   └── REPRODUCIBILITY.md
 ├── config/
 │   └── benchmark-v1.yaml
@@ -50,34 +61,38 @@ Dataset/
 
 ## Current design documents
 
-- `docs/DATASET_SPECIFICATION.md` — complete candidate benchmark contract and instance model.
-- `docs/DEADLINE_STRATEGY.md` — lower bounds, deterministic HEFT reference makespan, and deadline factors.
+- `docs/DATASET_SPECIFICATION.md` — candidate benchmark contract and instance model.
+- `docs/DEADLINE_STRATEGY.md` — theoretical lower bounds, deterministic HEFT reference makespan, and exact rational deadline factors.
+- `docs/BUDGET_STRATEGY.md` — exact cost representation, deadline-conditioned cost calibration, budget factors, and joint feasibility witnesses.
 - `docs/RESOURCE_MODEL.md` — IoT/Fog/Cloud tiers, resource scales, scenario profiles, cost/energy/network semantics.
+- `docs/WORKFLOW_MODEL.md` — Pegasus workflow normalization and task/dependency semantics.
+- `docs/PARAMETER_PROVENANCE.md` — provenance and status of numerical resource/network assumptions.
 - `docs/REPRODUCIBILITY.md` — seed separation, deterministic regeneration, manifests, and freeze policy.
-- `config/benchmark-v1.yaml` — machine-readable candidate benchmark matrix.
+- `config/benchmark-v1.yaml` — machine-readable candidate benchmark matrix and QoS calibration settings.
 
 ## Decisions still required before v1 freeze
 
-The following are deliberately not hidden behind arbitrary constants:
+The following remain deliberately unresolved rather than hidden behind arbitrary constants:
 
-- exact compute/memory/power/price ranges per tier;
-- exact network bandwidth/latency/energy values;
-- tolerance for requested versus generated workflow task count;
-- final validation of the S01/S02/S03 resource counts;
-- budget-reference and budget-factor methodology;
-- literature/provenance support for numerical parameter ranges.
+- final evidence-backed compute/memory/power/price ranges per tier;
+- final network bandwidth/latency/energy values;
+- dimensionally valid network-energy model;
+- tolerance/rule for requested versus generated workflow task count;
+- pilot validation of the S01/S02/S03 resource counts;
+- pilot confirmation that the calibration frontier creates useful nondegenerate cost ranges.
 
 ## Experimental workflow
 
 1. Specify and review the benchmark.
 2. Lock supported numerical ranges using literature/specification evidence.
-3. Implement a deterministic generator and schemas.
-4. Validate generated candidate instances and distributions.
-5. Freeze dataset version 1.
-6. Run every baseline algorithm on the same frozen instances.
-7. Analyse scheduling failures, constraint violations, and trade-offs.
-8. Formulate the novel algorithm only after those empirical weaknesses are understood.
+3. Implement deterministic generator, calibration utilities, schemas, and validators.
+4. Generate a small pilot benchmark and inspect distributions/trade-offs.
+5. Adjust only pre-declared candidate parameters when pilot validation demonstrates a benchmark-design problem.
+6. Generate and freeze dataset version 1.
+7. Run every baseline algorithm on the same frozen instances.
+8. Analyse scheduling failures, constraint violations, and trade-offs.
+9. Formulate the novel algorithm only after those empirical weaknesses are understood.
 
 ## Status
 
-The candidate v1 benchmark specification is now under review on a feature branch. No generated benchmark instance is frozen yet.
+The candidate v1 benchmark specification is under review on `feature/dataset-spec-v1`. No generated benchmark instance is frozen yet.
