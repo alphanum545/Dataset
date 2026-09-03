@@ -10,32 +10,36 @@ The benchmark dataset must be designed and frozen before any proposed scheduling
 
 **Stage 1 — Dataset specification**
 
-The current work is to define and review:
+The v1 draft now defines the candidate benchmark dimensions, reference-makespan/deadline methodology, IoT–Fog–Cloud resource model, and reproducibility/freeze rules. Dataset generation has not started yet.
 
-- workflow families and workflow-size levels,
-- DAG/task and dependency representation,
-- IoT–Fog–Cloud resource model,
-- execution-time and communication-time model,
-- cost and energy parameters,
-- reference-makespan methodology,
-- deadline-generation strategy,
-- random seeds and reproducibility rules,
-- dataset schema and manifests,
-- validation requirements.
+### Candidate v1 matrix
 
-No benchmark instance should be considered frozen until these choices are documented, reviewed, and validated.
+- Workflow families: Montage, CyberShake, LIGO, SIPHT, Genome
+- Workflow sizes: 50, 100, 200, 400, 600, 800, 1000 tasks
+- Resource scales: S01, S02, S03
+- Scenario profiles: balanced, compute-constrained, network-constrained
+- Replication seeds: 101, 202, 303
+- Deadline levels: 1.25×, 1.50×, 2.00× deterministic reference makespan
 
-## Planned repository structure
+If each deadline level is materialized as a separate scheduling instance, the candidate matrix contains:
+
+`5 × 7 × 3 × 3 × 3 × 3 = 2,835 instances`
+
+With seven algorithms, that corresponds to `19,845` algorithm-instance runs before repeated stochastic algorithm seeds are added.
+
+## Repository structure
 
 ```text
 Dataset/
 ├── README.md
+├── AGENTS.md
 ├── docs/
 │   ├── DATASET_SPECIFICATION.md
 │   ├── DEADLINE_STRATEGY.md
 │   ├── RESOURCE_MODEL.md
 │   └── REPRODUCIBILITY.md
 ├── config/
+│   └── benchmark-v1.yaml
 ├── generator/
 ├── schemas/
 ├── validation/
@@ -44,16 +48,36 @@ Dataset/
 └── tests/
 ```
 
+## Current design documents
+
+- `docs/DATASET_SPECIFICATION.md` — complete candidate benchmark contract and instance model.
+- `docs/DEADLINE_STRATEGY.md` — lower bounds, deterministic HEFT reference makespan, and deadline factors.
+- `docs/RESOURCE_MODEL.md` — IoT/Fog/Cloud tiers, resource scales, scenario profiles, cost/energy/network semantics.
+- `docs/REPRODUCIBILITY.md` — seed separation, deterministic regeneration, manifests, and freeze policy.
+- `config/benchmark-v1.yaml` — machine-readable candidate benchmark matrix.
+
+## Decisions still required before v1 freeze
+
+The following are deliberately not hidden behind arbitrary constants:
+
+- exact compute/memory/power/price ranges per tier;
+- exact network bandwidth/latency/energy values;
+- tolerance for requested versus generated workflow task count;
+- final validation of the S01/S02/S03 resource counts;
+- budget-reference and budget-factor methodology;
+- literature/provenance support for numerical parameter ranges.
+
 ## Experimental workflow
 
-1. Specify the benchmark.
-2. Implement a deterministic generator.
-3. Validate generated instances.
-4. Freeze dataset version 1.
-5. Run all baseline algorithms on the same frozen instances.
-6. Analyse scheduling failures and trade-offs.
-7. Formulate the novel algorithm only after the empirical weaknesses are understood.
+1. Specify and review the benchmark.
+2. Lock supported numerical ranges using literature/specification evidence.
+3. Implement a deterministic generator and schemas.
+4. Validate generated candidate instances and distributions.
+5. Freeze dataset version 1.
+6. Run every baseline algorithm on the same frozen instances.
+7. Analyse scheduling failures, constraint violations, and trade-offs.
+8. Formulate the novel algorithm only after those empirical weaknesses are understood.
 
 ## Status
 
-The repository has been initialized. Dataset generation has **not** started yet; the specification is being developed first.
+The candidate v1 benchmark specification is now under review on a feature branch. No generated benchmark instance is frozen yet.
