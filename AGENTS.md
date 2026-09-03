@@ -16,6 +16,14 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Authoritative units are explicit: execution time in microseconds, compute energy in nanojoules, network energy in picojoules, normalized cost/budget in integer nCU.
 - Generated data, manifests, schemas, and validation reports must agree on source checksum and instance identifiers/checksums.
 
+## Implementation stack and verification
+- Generator runtime: Python 3.11 or newer.
+- Install development/test dependencies with `python -m pip install -e '.[test]'`.
+- Run the repository test gate with `python -m pytest`.
+- Invoke the generator CLI with `python -m generator.cli`.
+- Python package discovery is intentionally limited to `generator*`; repository data/configuration directories are not importable Python packages.
+- GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
+
 ## Planned structure
 - `docs/` - benchmark specification and methodology.
 - `config/` - committed generation/scenario configuration.
