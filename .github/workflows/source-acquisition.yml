@@ -46,7 +46,7 @@ jobs:
           git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$UPSTREAM_COMMIT"
       - name: Compile Bharathi generator
         run: ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
-      - name: Acquire real Montage-50, SIPHT-50, and LIGO-1000 sources
+      - name: Acquire real boundary sources
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -58,34 +58,29 @@ jobs:
           upstream = Path(os.environ['RUNNER_TEMP']) / 'WorkflowGenerator' / 'bharathi'
           output = Path(os.environ['RUNNER_TEMP']) / 'source-smoke'
 
-          config = load_config('config/benchmark-v1.yaml')
-          config['workflows']['families'] = ['montage', 'sipht']
-          config['workflows']['requested_task_counts'] = [50]
-          config['workflows']['source_replicates'] = ['r01']
-          config['source_workflows']['expected_raw_artifacts'] = 2
-          first = acquire_source_workflows(
-              config,
-              upstream_dir=upstream,
-              output_root=output,
-              manifest_path=Path(os.environ['RUNNER_TEMP']) / 'source-smoke-manifest.json',
-          )
-          assert first['artifact_count'] == 2
-          assert all(entry['actual_task_count'] == 50 for entry in first['entries'])
+          def acquire(family, target, manifest_name):
+              config = load_config('config/benchmark-v1.yaml')
+              config['workflows']['families'] = [family]
+              config['workflows']['requested_task_counts'] = [target]
+              config['workflows']['source_replicates'] = ['r01']
+              config['source_workflows']['expected_raw_artifacts'] = 1
+              manifest = acquire_source_workflows(
+                  config,
+                  upstream_dir=upstream,
+                  output_root=output,
+                  manifest_path=Path(os.environ['RUNNER_TEMP']) / manifest_name,
+              )
+              entry = manifest['entries'][0]
+              assert entry['actual_task_count'] == target
+              return entry
 
-          config = load_config('config/benchmark-v1.yaml')
-          config['workflows']['families'] = ['ligo']
-          config['workflows']['requested_task_counts'] = [1000]
-          config['workflows']['source_replicates'] = ['r01']
-          config['source_workflows']['expected_raw_artifacts'] = 1
-          ligo = acquire_source_workflows(
-              config,
-              upstream_dir=upstream,
-              output_root=output,
-              manifest_path=Path(os.environ['RUNNER_TEMP']) / 'ligo-smoke-manifest.json',
-          )
-          assert ligo['artifact_count'] == 1
-          assert ligo['entries'][0]['actual_task_count'] == 1000
-          assert ligo['entries'][0]['requested_numjobs'] % 2 == 0
+          assert acquire('montage', 50, 'montage-smoke.json')['actual_task_count'] == 50
+          sipht50 = acquire('sipht', 50, 'sipht50-smoke.json')
+          assert sipht50['requested_numjobs'] >= 50
+          sipht600 = acquire('sipht', 600, 'sipht600-smoke.json')
+          assert sipht600['requested_numjobs'] >= 600
+          ligo = acquire('ligo', 1000, 'ligo-smoke.json')
+          assert ligo['requested_numjobs'] % 2 == 0
           PY
 
   generate-full-source-set:
