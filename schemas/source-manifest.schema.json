@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/source-manifest.schema.json",
+  "title": "Frozen source workflow manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider",
+    "repository",
+    "implementation",
+    "pinned_commit",
+    "artifact_count",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "provider": {"const": "pegasus"},
+    "repository": {"const": "pegasus-isi/WorkflowGenerator"},
+    "implementation": {"const": "bharathi"},
+    "pinned_commit": {"$ref": "common.schema.json#/$defs/gitSha"},
+    "artifact_count": {"type": "integer", "minimum": 1},
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "acquisition_attempt",
+          "actual_task_count",
+          "application",
+          "command",
+          "family",
+          "path",
+          "replicate_id",
+          "request_mode",
+          "requested_lanes",
+          "requested_numjobs",
+          "requested_sequences",
+          "sha256",
+          "target_task_count"
+        ],
+        "properties": {
+          "acquisition_attempt": {"type": "integer", "minimum": 1},
+          "actual_task_count": {"enum": [60, 100, 200, 400, 600, 800, 1000]},
+          "application": {"enum": ["MONTAGE", "CYBERSHAKE", "LIGO", "SIPHT", "GENOME"]},
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "family": {"$ref": "common.schema.json#/$defs/family"},
+          "path": {"type": "string", "minLength": 1, "pattern": "\\.dax$"},
+          "replicate_id": {"$ref": "common.schema.json#/$defs/replicate"},
+          "request_mode": {"enum": ["numjobs_search", "genome_lanes_sequences_exact"]},
+          "requested_lanes": {
+            "anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+          },
+          "requested_numjobs": {
+            "anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+          },
+          "requested_sequences": {
+            "anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+          },
+          "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "target_task_count": {"enum": [60, 100, 200, 400, 600, 800, 1000]}
+        }
+      }
+    }
+  }
+}

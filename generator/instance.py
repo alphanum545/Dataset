@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from .canonical import content_sha256
 from .dax import execution_time_us
 from .exact import ceil_div
+from .identity import base_instance_id
 from .network import build_network, route_metrics
 from .resources import build_resources
 
@@ -56,9 +58,21 @@ def build_base_instance(
                 )
         communication_matrix[edge_id] = edge_routes
 
-    return {
+    dataset_version = str(config["dataset"]["version"])
+    identifier = base_instance_id(
+        dataset_version=dataset_version,
+        workflow_identifier=normalized_workflow["metadata"]["workflow_id"],
+        resource_scale=scale,
+        scenario_profile=scenario,
+        ifc_realization_seed=seed,
+    )
+
+    instance = {
+        "schema_version": 1,
         "metadata": {
             **normalized_workflow["metadata"],
+            "base_instance_id": identifier,
+            "dataset_version": dataset_version,
             "resource_scale": scale,
             "scenario_profile": scenario,
             "ifc_realization_seed": seed,
@@ -73,3 +87,5 @@ def build_base_instance(
         "compute_energy_nj": compute_energy_matrix,
         "communication": communication_matrix,
     }
+    instance["content_sha256"] = content_sha256(instance)
+    return instance

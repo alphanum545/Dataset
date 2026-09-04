@@ -25,8 +25,10 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Install development/test dependencies with `python -m pip install -e '.[test]'`.
 - Run the repository test gate with `python -m pytest`.
 - Invoke the generator CLI with `python -m generator.cli`.
+- Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
+- Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
-- Python package discovery is intentionally limited to `generator*`; repository data/configuration directories are not importable Python packages.
+- Python package discovery is intentionally limited to `generator*` and `validation*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
 - The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests exact 60-task acquisition for all five families, every configured Genome target, plus the observed SIPHT-600 and LIGO-1000 boundary cases, on relevant PRs. After acquisition changes reach `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
 

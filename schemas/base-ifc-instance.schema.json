@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/base-ifc-instance.schema.json",
+  "title": "IFC scheduling instance before QoS calibration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "metadata",
+    "tasks",
+    "dependencies",
+    "resources",
+    "network",
+    "execution_time_us",
+    "compute_cost_ncu",
+    "compute_energy_nj",
+    "communication",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_instance_id",
+        "workflow_id",
+        "dataset_version",
+        "family",
+        "target_task_count",
+        "actual_task_count",
+        "source_replicate",
+        "source_sha256",
+        "reference_mips",
+        "resource_scale",
+        "scenario_profile",
+        "ifc_realization_seed",
+        "resource_count"
+      ],
+      "properties": {
+        "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "workflow_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "dataset_version": {"$ref": "common.schema.json#/$defs/identifier"},
+        "family": {"$ref": "common.schema.json#/$defs/family"},
+        "target_task_count": {"type": "integer", "minimum": 1},
+        "actual_task_count": {"type": "integer", "minimum": 1},
+        "source_replicate": {"$ref": "common.schema.json#/$defs/replicate"},
+        "source_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "reference_mips": {"type": "integer", "minimum": 1},
+        "resource_scale": {"$ref": "common.schema.json#/$defs/resourceScale"},
+        "scenario_profile": {"$ref": "common.schema.json#/$defs/scenarioProfile"},
+        "ifc_realization_seed": {"type": "integer", "minimum": 0},
+        "resource_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "common.schema.json#/$defs/task"}
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {"$ref": "common.schema.json#/$defs/dependency"}
+    },
+    "resources": {"$ref": "resources.schema.json"},
+    "network": {"$ref": "network.schema.json"},
+    "execution_time_us": {"$ref": "#/$defs/positiveMatrix"},
+    "compute_cost_ncu": {"$ref": "#/$defs/nonnegativeMatrix"},
+    "compute_energy_nj": {"$ref": "#/$defs/nonnegativeMatrix"},
+    "communication": {
+      "type": "object",
+      "minProperties": 0,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["communication_time_us", "communication_energy_pj"],
+          "properties": {
+            "communication_time_us": {"type": "integer", "minimum": 0},
+            "communication_energy_pj": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+  },
+  "$defs": {
+    "positiveMatrix": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {"type": "integer", "minimum": 1}
+      }
+    },
+    "nonnegativeMatrix": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

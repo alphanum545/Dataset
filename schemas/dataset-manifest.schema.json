@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/dataset-manifest.schema.json",
+  "title": "Generated IFC dataset manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_version",
+    "generator_commit_sha",
+    "configuration_sha256",
+    "source_manifest_sha256",
+    "instance_count",
+    "dimensions",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "dataset_version": {"$ref": "common.schema.json#/$defs/identifier"},
+    "generator_commit_sha": {"$ref": "common.schema.json#/$defs/gitSha"},
+    "configuration_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "source_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "instance_count": {"type": "integer", "minimum": 0},
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["families", "task_counts", "replicates", "resource_scales", "scenario_profiles", "qos_profiles"],
+      "properties": {
+        "families": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/family"}},
+        "task_counts": {"type": "array", "uniqueItems": true, "items": {"enum": [60, 100, 200, 400, 600, 800, 1000]}},
+        "replicates": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/replicate"}},
+        "resource_scales": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/resourceScale"}},
+        "scenario_profiles": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/scenarioProfile"}},
+        "qos_profiles": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/qosProfile"}}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "path",
+          "sha256",
+          "family",
+          "target_task_count",
+          "replicate_id",
+          "source_sha256",
+          "resource_scale",
+          "scenario_profile",
+          "qos_profile",
+          "validation_status"
+        ],
+        "properties": {
+          "instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+          "path": {"type": "string", "minLength": 1, "pattern": "\\.json$"},
+          "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "family": {"$ref": "common.schema.json#/$defs/family"},
+          "target_task_count": {"enum": [60, 100, 200, 400, 600, 800, 1000]},
+          "replicate_id": {"$ref": "common.schema.json#/$defs/replicate"},
+          "source_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "resource_scale": {"$ref": "common.schema.json#/$defs/resourceScale"},
+          "scenario_profile": {"$ref": "common.schema.json#/$defs/scenarioProfile"},
+          "qos_profile": {"$ref": "common.schema.json#/$defs/qosProfile"},
+          "validation_status": {"const": "passed"}
+        }
+      }
+    }
+  }
+}
