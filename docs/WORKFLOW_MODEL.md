@@ -60,11 +60,11 @@ Core v1 size labels are exact actual task counts:
 
 The earlier 50-task common target was retired before dataset freeze because inspection of the pinned Bharathi Genome implementation showed that its task-count construction cannot produce exactly 50 jobs. Core v1 therefore uses 60 as the smallest common exact target rather than silently accepting or relabelling a nearby Genome workflow.
 
-The acquisition stage passes the desired count through the Bharathi application's `--numjobs/-n` option and accepts only DAX artifacts whose parsed job count equals the target exactly.
-
 `allowed_size_deviation = 0`.
 
-There is no percentage tolerance and no silent relabelling. If a family/size cannot produce an exact valid artifact within the bounded acquisition rule, acquisition fails for explicit review.
+There is no percentage tolerance and no silent relabelling. If a family/size cannot produce an exact valid artifact under the declared family-specific acquisition policy, acquisition fails for explicit review.
+
+For Montage, CyberShake, SIPHT, and LIGO, the acquisition stage uses Bharathi `--numjobs/-n` search and accepts only DAX artifacts whose parsed job count equals the target exactly. Genome instead uses the pinned generator's explicit one-lane `--lanes/-l` and derived `--sequences/-s` request because its `--numjobs` heuristic does not reliably realize the configured even target grid. For Genome, `sequences = target/4 - 1`, giving exact `task_count = 4*sequences + 4`.
 
 ## Task work derivation
 
@@ -171,7 +171,7 @@ At minimum:
 - raw DAX path and SHA-256;
 - source replicate ID;
 - acquisition attempt index;
-- acquisition command/options;
+- acquisition command/options and request mode;
 - exact target and actual task count;
 - normalization code commit;
 - reference MIPS;
