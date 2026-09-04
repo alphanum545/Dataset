@@ -75,39 +75,39 @@ The benchmark size therefore does not change.
 
 The seven benchmark size labels represent **actual parsed workflow task counts**, not the upstream request parameter:
 
-`50, 100, 200, 400, 600, 800, 1000`
+`60, 100, 200, 400, 600, 800, 1000`
 
 `allowed_size_deviation = 0` remains unchanged.
 
-A real full-source acquisition run demonstrated why this distinction is necessary: Bharathi SIPHT invoked with `-n 50` repeatedly emits a 48-task DAG. Inspection of the pinned SIPHT implementation confirms that `numJobs` is transformed into subworkflow counts and is therefore a model/planning input rather than an exact-output contract.
+The earlier 50-task common target was retired before dataset freeze. Inspection of the pinned Bharathi Genome implementation shows that its constructed job count cannot equal 50: a one-lane Genome has `4s+4` jobs, while a multi-lane Genome has `4s+2l+3` jobs. Therefore 50 (`mod 4 = 2`) is not reachable by that model. Core v1 uses 60 as the smallest common exact target instead of accepting or relabelling a nearby Genome workflow.
 
-### Deterministic request search
+A real full-source acquisition run also demonstrated why target count must be separated from the upstream request parameter: Bharathi SIPHT can emit a different actual count from the requested `--numjobs`. The benchmark therefore accepts only exact parsed counts and records the upstream request separately.
 
-For benchmark target `N`, one replicate uses the fixed request sequence:
+### Deterministic family-aware request search
 
-`N, N+1, N+2, ... , N+(max_attempts-1)`
+The total acquisition budget remains bounded by `max_attempts_per_replicate = 100`.
 
-With the v1 bound of 100 attempts, the largest permitted upstream request is `N+99`.
+For the default families, each candidate request is tried twice before moving to the next integer request value:
+
+`N, N, N+1, N+1, N+2, N+2, ...`
+
+For LIGO, each candidate request is tried five times and requests advance by two:
+
+`N ×5, (N+2) ×5, (N+4) ×5, ...`
+
+because the pinned LIGO generator rejects odd `--numjobs` values and can transiently fail topology construction even when an even request is valid.
 
 For each attempt:
 
-1. invoke the pinned Bharathi `AppGenerator` with current `requested_numjobs`;
+1. invoke the pinned Bharathi `AppGenerator` with the current `requested_numjobs`;
 2. parse the emitted DAX and count actual jobs;
 3. validate XML/DAX structure, runtimes, dependencies, and required file metadata;
 4. accept only if `actual_task_count == benchmark_target`;
 5. reject an otherwise valid artifact whose actual count differs from the target;
-6. proceed to the next larger request value;
-7. fail acquisition after the bounded search rather than accepting a nearby actual size.
+6. continue according to the predeclared family-aware request sequence;
+7. fail acquisition after the bounded total attempt budget rather than accepting a nearby actual size.
 
-Therefore a source manifest may contain, for example:
-
-- `target_task_count: 50`
-- `requested_numjobs: 52`
-- `actual_task_count: 50`
-
-The benchmark instance is still a genuine **50-task** workflow. The value 52 is only upstream acquisition provenance.
-
-This rule is family-neutral; there is no hand-coded SIPHT correction formula. It adapts to the pinned generator's actual output while preserving an exact cross-family benchmark size grid.
+The manifest records both `target_task_count` and `requested_numjobs`. A target remains an exact benchmark size even when Bharathi required a different request value to produce it.
 
 ## Anti-selection-bias rule
 
@@ -121,7 +121,7 @@ For each family/size pair, accept the **first three** acquisition attempts that 
 
 Do **not** inspect makespan, cost, energy, graph density, critical-path length, or algorithm performance to decide which valid DAX to keep.
 
-The deterministic increasing request sequence and first-valid rule prevent manual hunting for a favorable topology.
+The predeclared search order and first-valid rule prevent manual hunting for a favorable topology.
 
 ## Proposed source tree
 
@@ -129,8 +129,8 @@ The deterministic increasing request sequence and first-valid rule prevent manua
 source_workflows/
 └── pegasus-bharathi-bb1f8d43/
     ├── montage/
-    │   ├── 0050/r01.dax
-    │   ├── 0050/r02.dax
+    │   ├── 0060/r01.dax
+    │   ├── 0060/r02.dax
     │   └── ...
     ├── cybershake/
     ├── ligo/
@@ -173,5 +173,5 @@ The source set must pass:
 6. every accepted artifact satisfies the declared metadata gates;
 7. no two replicates within one family/size have the same raw checksum;
 8. manifest checksum and file checksum agree;
-9. every accepted attempt follows the deterministic increasing request sequence;
+9. every accepted attempt follows the configured family-aware request sequence;
 10. no selection criterion depends on a scheduler's results.
