@@ -73,13 +73,44 @@ def _attempts_per_request(acquisition_cfg: dict, family: str) -> int:
     elif configured is not None:
         value = configured
     else:
-        # LIGO may fail topology construction stochastically even for a valid
-        # exact request. SIPHT's count mapping instead needs enough search
-        # breadth to reach values such as 620 -> 600 actual tasks.
         value = 5 if family == "ligo" else 2
     if value is None or int(value) <= 0:
         raise AcquisitionError("attempts_per_requested_numjobs must resolve to > 0")
     return int(value)
+
+
+def _genome_exact_request(target: int, acquisition_cfg: dict) -> tuple[list[str], dict]:
+    lanes = int(acquisition_cfg.get("genome_exact_lanes", 1))
+    if lanes != 1:
+        raise AcquisitionError("core v1 Genome exact acquisition requires genome_exact_lanes = 1")
+    if target < 8 or target % 4 != 0:
+        raise AcquisitionError(
+            f"Genome exact single-lane acquisition requires target >= 8 and divisible by 4; got {target}"
+        )
+    sequences = target // 4 - 1
+    return ["-l", str(lanes), "-s", str(sequences)], {
+        "request_mode": "genome_lanes_sequences_exact",
+        "requested_numjobs": None,
+        "requested_lanes": lanes,
+        "requested_sequences": sequences,
+    }
+
+
+def _numjobs_request(
+    *,
+    family: str,
+    target: int,
+    attempt: int,
+    attempts_per_requested_numjobs: int,
+) -> tuple[list[str], dict]:
+    request_index = (attempt - 1) // attempts_per_requested_numjobs
+    requested_numjobs = target + request_index * _request_step(family)
+    return ["-n", str(requested_numjobs)], {
+        "request_mode": "numjobs_search",
+        "requested_numjobs": requested_numjobs,
+        "requested_lanes": None,
+        "requested_sequences": None,
+    }
 
 
 def _acquire_one(
@@ -91,6 +122,7 @@ def _acquire_one(
     replicate_id: str,
     max_attempts: int,
     attempts_per_requested_numjobs: int,
+    acquisition_cfg: dict,
     used_checksums: set[str],
     reference_mips: int,
     runner: Runner,
@@ -101,33 +133,41 @@ def _acquire_one(
 
     failures: list[str] = []
     relative_executable = str(executable.relative_to(upstream_dir))
-    request_step = _request_step(family)
     for attempt in range(1, max_attempts + 1):
-        request_index = (attempt - 1) // attempts_per_requested_numjobs
-        requested_numjobs = target + request_index * request_step
-        command = [relative_executable, "-a", application, "-n", str(requested_numjobs)]
+        if family == "genome":
+            request_args, request_metadata = _genome_exact_request(target, acquisition_cfg)
+        else:
+            request_args, request_metadata = _numjobs_request(
+                family=family,
+                target=target,
+                attempt=attempt,
+                attempts_per_requested_numjobs=attempts_per_requested_numjobs,
+            )
+
+        command = [relative_executable, "-a", application, *request_args]
+        request_label = (
+            f"lanes={request_metadata['requested_lanes']},sequences={request_metadata['requested_sequences']}"
+            if family == "genome"
+            else f"requested {request_metadata['requested_numjobs']}"
+        )
         try:
             result = runner(command, upstream_dir)
         except (OSError, subprocess.SubprocessError) as exc:
             failures.append(
-                f"attempt {attempt} (requested {requested_numjobs}): "
-                f"process error {type(exc).__name__}: {exc}"
+                f"attempt {attempt} ({request_label}): process error {type(exc).__name__}: {exc}"
             )
             continue
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
             failures.append(
-                f"attempt {attempt} (requested {requested_numjobs}): "
-                f"exit {result.returncode}: {stderr[:240]}"
+                f"attempt {attempt} ({request_label}): exit {result.returncode}: {stderr[:240]}"
             )
             continue
 
         raw = result.stdout
         checksum = sha256(raw).hexdigest()
         if checksum in used_checksums:
-            failures.append(
-                f"attempt {attempt} (requested {requested_numjobs}): duplicate checksum {checksum}"
-            )
+            failures.append(f"attempt {attempt} ({request_label}): duplicate checksum {checksum}")
             continue
         try:
             normalized = normalize_dax(
@@ -138,14 +178,14 @@ def _acquire_one(
                 reference_mips=reference_mips,
             )
         except DaxValidationError as exc:
-            failures.append(f"attempt {attempt} (requested {requested_numjobs}): {exc}")
+            failures.append(f"attempt {attempt} ({request_label}): {exc}")
             continue
 
         return raw, {
             "family": family,
             "application": application,
             "target_task_count": target,
-            "requested_numjobs": requested_numjobs,
+            **request_metadata,
             "actual_task_count": normalized["metadata"]["actual_task_count"],
             "replicate_id": replicate_id,
             "acquisition_attempt": attempt,
@@ -202,6 +242,7 @@ def acquire_source_workflows(
                     replicate_id=replicate_id,
                     max_attempts=max_attempts,
                     attempts_per_requested_numjobs=attempts_per_requested_numjobs,
+                    acquisition_cfg=acquisition_cfg,
                     used_checksums=used_checksums_by_target[target],
                     reference_mips=reference_mips,
                     runner=runner,
