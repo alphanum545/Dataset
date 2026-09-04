@@ -20,9 +20,9 @@ Version 1 uses five established scientific-workflow families:
 
 ### 2.2 Workflow sizes
 
-Seven target task-count levels are used:
+Seven exact target task-count levels are used:
 
-- 50
+- 60
 - 100
 - 200
 - 400
@@ -30,9 +30,11 @@ Seven target task-count levels are used:
 - 800
 - 1000 tasks
 
-A workflow instance records both requested and actual normalized task count. If the source generator cannot produce the exact requested count, the actual count and deviation are retained and validated; it is never silently relabelled.
+The original pilot candidate used 50 as the smallest level. Full acquisition against the pinned Bharathi `Genome` implementation proved that an exact 50-task Genome workflow is structurally unreachable. Genome creates either `4S+4` tasks for a one-lane workflow or `4S+2L+3` tasks for a multi-lane workflow, so 50 cannot be produced by that model. The common smallest size is therefore 60, which is exactly representable, instead of accepting or relabelling a nearby workflow.
 
-This yields 35 base workflow structures before infrastructure/scenario replication.
+A source manifest records the benchmark target, the actual upstream `--numjobs` request, and the actual parsed task count separately. The accepted parsed task count must equal the benchmark target exactly; it is never silently relabelled.
+
+This yields 35 family/size combinations and, with three source replicates, 105 frozen source workflows.
 
 ### 2.3 Scheduler-visible resource semantics
 
@@ -72,7 +74,7 @@ Each base workflow/infrastructure realization produces exactly three primary joi
 
 The core matrix remains:
 
-`5 families × 7 sizes × 3 resource scales × 3 scenario profiles × 3 seeds × 3 QoS profiles = 2,835 instances`
+`5 families × 7 sizes × 3 source replicates × 3 resource scales × 3 scenario profiles × 3 QoS profiles = 2,835 instances`
 
 With seven evaluated algorithms this is `19,845` algorithm-instance runs before repeated stochastic scheduler seeds.
 
@@ -91,8 +93,9 @@ At minimum:
 - dataset/schema/generator versions;
 - instance ID;
 - workflow family;
-- requested and actual task counts;
-- deterministic seeds;
+- benchmark target and actual parsed task counts;
+- source replicate and source checksum;
+- deterministic IFC realization seed;
 - resource scale and scenario profile;
 - QoS profile;
 - provenance;
@@ -242,7 +245,11 @@ The schedule that produced `C_floor_ref(D)` is the joint feasibility witness.
 
 ## 10. Determinism and replication
 
-Workflow, resource, network, and constraint random streams are separated and explicitly seeded. Resource-class allocation uses mandatory endpoint/class coverage before deterministic seeded filling of remaining slots. No evaluated algorithm generates fresh infrastructure or constraints.
+The three source replicates are independently generated, checksum-distinct source DAGs. They are not identical replicas. Their identities are `r01`, `r02`, and `r03`, and each maps to a deterministic IFC realization seed (`101`, `202`, `303`) for benchmark-owned resource/network construction.
+
+The upstream Bharathi generator itself is not claimed seed-reproducible. Source acquisition follows a bounded, predeclared family-aware request policy and accepts only the first structurally valid checksum-distinct DAG whose actual parsed count equals the benchmark target.
+
+Resource, network, and constraint random streams are separated and explicitly seeded. Resource-class allocation uses mandatory endpoint/class coverage before deterministic seeded filling of remaining slots. No evaluated algorithm generates fresh infrastructure or constraints.
 
 ## 11. Static first
 
@@ -267,11 +274,6 @@ Every generated candidate instance must also pass DAG, ID, execution matrix, rou
 
 After freeze, schedulers may read benchmark inputs and produce results but may not modify benchmark semantics. Any change to workflow normalization, resource classes, route model, objective units, references, seeds, or constraint calculation requires a new dataset version.
 
-## 14. Remaining open items before pilot generation
+## 14. Source-acquisition status before pilot generation
 
-Only the following specification items remain before generator implementation:
-
-- requested-versus-actual workflow-size acceptance rule;
-- exact source WorkflowGenerator/WorkflowHub version/commit and commands used to obtain the five workflow families.
-
-The numerical resource/network model is now sufficiently specified for pilot implementation, but remains subject to the explicit pilot freeze gates above.
+The source provider, pinned commit, exact-count rule, source-replicate policy, producer-side edge-size rule, and family-aware bounded request search are specified and implemented. The remaining gate is empirical acquisition and validation of all 105 source DAX artifacts. Only after that corpus is reviewed and frozen does the project proceed to pilot IFC instance generation and calibration.

@@ -8,9 +8,11 @@ The benchmark dataset is designed and frozen before any proposed scheduling algo
 
 ## Current stage
 
-**Stage 1 complete in draft — pilot specification is implementation-ready.**
+**Stage 2 — source-workflow acquisition and validation.**
 
-The v1 pilot candidate now defines:
+The v1 pilot specification and deterministic generator core are implemented. Source acquisition is now being validated against the pinned Pegasus/Bharathi implementation before the 105 raw DAX artifacts are frozen.
+
+The v1 pilot candidate defines:
 
 - five Pegasus/Bharathi workflow families;
 - seven exact task-count levels;
@@ -22,16 +24,18 @@ The v1 pilot candidate now defines:
 - deadline-conditioned budget calibration and joint-feasibility witnesses;
 - source acquisition, reproducibility, validation, and freeze rules.
 
-No benchmark instance is frozen yet. The next stage is deterministic generator/validator implementation followed by pilot generation.
+No IFC benchmark instance is frozen yet.
 
 ## Candidate v1 matrix
 
 - Workflow families: Montage, CyberShake, LIGO, SIPHT, Genome
-- Exact workflow sizes: 50, 100, 200, 400, 600, 800, 1000 tasks
+- Exact workflow sizes: 60, 100, 200, 400, 600, 800, 1000 tasks
 - Frozen source replicates: r01, r02, r03
 - Resource scales: S01, S02, S03
 - Scenario profiles: balanced, compute-constrained, network-constrained
 - Joint QoS profiles: tight, moderate, relaxed
+
+The original candidate smallest size was 50. Full acquisition against the pinned Genome generator proved that an exact 50-task Genome DAG is structurally unreachable under its task-construction model. The common smallest size was therefore changed to 60 rather than relabelling an approximate workflow. Exact task counts remain mandatory for every family.
 
 Source workflows:
 
@@ -54,6 +58,8 @@ V1 pins the legacy Pegasus `WorkflowGenerator` Bharathi implementation at commit
 `bb1f8d43fe203f5c2cb209540531998af52000ea`
 
 The upstream implementation supports all five required scientific-workflow families and derives workflow structure/runtime/file-size distributions from real workflows. Because the legacy code contains unseeded randomness, v1 does not claim upstream seed reproducibility. Instead, the first three structurally valid exact-size DAX artifacts for each family/size are frozen and checksum-addressed.
+
+The upstream `--numjobs` value is treated as an acquisition parameter, not as the benchmark size label. The parsed DAX must have the exact benchmark target count.
 
 See `docs/SOURCE_WORKFLOW_ACQUISITION.md`.
 
@@ -116,9 +122,9 @@ Dataset/
 
 ## Experimental workflow
 
-1. Specify and review benchmark semantics. **Current**
-2. Implement deterministic source validation, normalization, resource/network generation, calibration, and schemas.
-3. Acquire/freeze the 105 source DAX artifacts using the predeclared acceptance rule.
+1. Specify and review benchmark semantics. **Done for pilot candidate.**
+2. Implement deterministic source validation and the generator core. **Done.**
+3. Acquire/freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Current.**
 4. Generate a small pilot benchmark and inspect distributions/trade-offs.
 5. Adjust only predeclared pilot parameters if validation demonstrates a benchmark-design problem.
 6. Generate and freeze dataset v1.
@@ -128,4 +134,4 @@ Dataset/
 
 ## Status
 
-The v1 pilot specification is implementation-ready but **not frozen**. No generated IFC benchmark input has been declared final yet.
+The v1 pilot specification and acquisition tooling are implemented but **not frozen**. No generated IFC benchmark input has been declared final yet.
