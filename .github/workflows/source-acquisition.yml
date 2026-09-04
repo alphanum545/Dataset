@@ -46,7 +46,7 @@ jobs:
           git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$UPSTREAM_COMMIT"
       - name: Compile Bharathi generator
         run: ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
-      - name: Acquire real boundary sources
+      - name: Acquire real common-size and boundary sources
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -74,13 +74,14 @@ jobs:
               assert entry['actual_task_count'] == target
               return entry
 
-          assert acquire('montage', 50, 'montage-smoke.json')['actual_task_count'] == 50
-          sipht50 = acquire('sipht', 50, 'sipht50-smoke.json')
-          assert sipht50['requested_numjobs'] >= 50
+          for family in ['montage', 'cybershake', 'ligo', 'sipht', 'genome']:
+              entry = acquire(family, 60, f'{family}-60-smoke.json')
+              assert entry['actual_task_count'] == 60
+
           sipht600 = acquire('sipht', 600, 'sipht600-smoke.json')
           assert sipht600['requested_numjobs'] >= 600
-          ligo = acquire('ligo', 1000, 'ligo-smoke.json')
-          assert ligo['requested_numjobs'] % 2 == 0
+          ligo1000 = acquire('ligo', 1000, 'ligo1000-smoke.json')
+          assert ligo1000['requested_numjobs'] % 2 == 0
           PY
 
   generate-full-source-set:
