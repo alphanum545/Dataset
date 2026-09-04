@@ -74,9 +74,16 @@ jobs:
               assert entry['actual_task_count'] == target
               return entry
 
-          for family in ['montage', 'cybershake', 'ligo', 'sipht', 'genome']:
+          for family in ['montage', 'cybershake', 'ligo', 'sipht']:
               entry = acquire(family, 60, f'{family}-60-smoke.json')
               assert entry['actual_task_count'] == 60
+
+          for target in [60, 100, 200, 400, 600, 800, 1000]:
+              genome = acquire('genome', target, f'genome-{target}-smoke.json')
+              assert genome['request_mode'] == 'genome_lanes_sequences_exact'
+              assert genome['requested_numjobs'] is None
+              assert genome['requested_lanes'] == 1
+              assert genome['requested_sequences'] == target // 4 - 1
 
           sipht600 = acquire('sipht', 600, 'sipht600-smoke.json')
           assert sipht600['requested_numjobs'] >= 600
