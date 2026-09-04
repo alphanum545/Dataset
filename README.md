@@ -8,9 +8,9 @@ The benchmark dataset is designed and frozen before any proposed scheduling algo
 
 ## Current stage
 
-**Stage 2 — source-workflow acquisition and validation.**
+**Stage 3 — pilot IFC benchmark generation and validation.**
 
-The v1 pilot specification and deterministic generator core are implemented. Source acquisition is now being validated against the pinned Pegasus/Bharathi implementation before the 105 raw DAX artifacts are frozen.
+The v1 pilot specification, deterministic generator core, and source-workflow acquisition phase are implemented. The 105 exact-size Pegasus/Bharathi source DAX artifacts are now committed to `main` together with `manifests/source-workflows-v1.json`. These source artifacts are the frozen raw workflow inputs for the next benchmark-generation stage.
 
 The v1 pilot candidate defines:
 
@@ -24,7 +24,7 @@ The v1 pilot candidate defines:
 - deadline-conditioned budget calibration and joint-feasibility witnesses;
 - source acquisition, reproducibility, validation, and freeze rules.
 
-No IFC benchmark instance is frozen yet.
+No IFC benchmark instance is frozen yet. The next step is to generate pilot IFC instances from the frozen DAX source corpus and validate distributions, trade-offs, sensitivity, feasibility, and calibration behavior before freezing v1.
 
 ## Candidate v1 matrix
 
@@ -59,7 +59,7 @@ V1 pins the legacy Pegasus `WorkflowGenerator` Bharathi implementation at commit
 
 The upstream implementation supports all five required scientific-workflow families and derives workflow structure/runtime/file-size distributions from real workflows. Because the legacy code contains unseeded randomness, v1 does not claim upstream seed reproducibility. Instead, the first three structurally valid exact-size DAX artifacts for each family/size are frozen and checksum-addressed.
 
-The upstream `--numjobs` value is treated as an acquisition parameter, not as the benchmark size label. The parsed DAX must have the exact benchmark target count.
+The upstream `--numjobs` value is treated as an acquisition parameter, not as the benchmark size label. The parsed DAX must have the exact benchmark target count. Genome uses the pinned generator's explicit one-lane `--lanes`/`--sequences` construction because its `--numjobs` path cannot represent all configured exact targets reliably.
 
 See `docs/SOURCE_WORKFLOW_ACQUISITION.md`.
 
@@ -124,8 +124,8 @@ Dataset/
 
 1. Specify and review benchmark semantics. **Done for pilot candidate.**
 2. Implement deterministic source validation and the generator core. **Done.**
-3. Acquire/freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Current.**
-4. Generate a small pilot benchmark and inspect distributions/trade-offs.
+3. Acquire and freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Done.**
+4. Generate a small pilot benchmark and inspect distributions/trade-offs. **Current.**
 5. Adjust only predeclared pilot parameters if validation demonstrates a benchmark-design problem.
 6. Generate and freeze dataset v1.
 7. Run every baseline algorithm on the same frozen instances.
@@ -134,4 +134,4 @@ Dataset/
 
 ## Status
 
-The v1 pilot specification and acquisition tooling are implemented but **not frozen**. No generated IFC benchmark input has been declared final yet.
+The v1 raw source-workflow corpus is frozen on `main`; the full IFC benchmark is **not frozen yet**. Pilot instance generation, calibration, feasibility validation, and sensitivity analysis remain before dataset v1 can be declared final.
