@@ -3,6 +3,7 @@ import json
 import pytest
 
 from generator.config import ConfigError, load_config
+from generator.canonical import content_sha256
 from generator.dax import DaxValidationError, execution_time_us, normalize_dax
 from generator.instance import build_base_instance
 from generator.network import build_network, route_metrics
@@ -23,6 +24,7 @@ DAX = '''<?xml version="1.0"?>
 
 
 CONFIG = {
+    "dataset": {"version": "v1-draft"},
     "infrastructure": {
         "resource_scales": {"S01": {"iot": 4, "fog": 4, "cloud": 2}},
         "resource_classes": {
@@ -75,6 +77,8 @@ CONFIG = {
 
 def test_normalize_dax_preserves_exact_runtime_and_edge_bytes():
     result = normalize_dax(DAX, family="montage", target_task_count=2, replicate_id="r01")
+    assert result["schema_version"] == 1
+    assert result["metadata"]["workflow_id"].startswith("wf-montage-0002-r01-")
     assert result["metadata"]["actual_task_count"] == 2
     assert result["tasks"][0]["work_mi"] == "1250.00"
     assert result["dependencies"] == [
@@ -175,6 +179,10 @@ def test_same_resource_communication_is_zero():
 def test_base_instance_materializes_exact_matrices():
     workflow = normalize_dax(DAX, family="montage", target_task_count=2, replicate_id="r01")
     instance = build_base_instance(workflow, CONFIG, scale="S01", scenario="balanced", seed=101)
+    assert instance["metadata"]["base_instance_id"].startswith(
+        "base-v1-draft-wf-montage-0002-r01-"
+    )
+    assert instance["content_sha256"] == content_sha256(instance)
     assert instance["metadata"]["resource_count"] == 10
     assert instance["execution_time_us"]["A"]["iot-001"] == 2_500_000
     assert instance["compute_cost_ncu"]["A"]["iot-001"] == 0

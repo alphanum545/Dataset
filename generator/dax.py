@@ -9,6 +9,7 @@ from typing import Iterable
 import xml.etree.ElementTree as ET
 
 from .exact import ceil_decimal, parse_positive_decimal
+from .identity import workflow_id
 
 
 class DaxValidationError(ValueError):
@@ -248,13 +249,21 @@ def normalize_dax(
             }
         )
 
+    source_sha256 = sha256(raw).hexdigest()
     return {
+        "schema_version": 1,
         "metadata": {
+            "workflow_id": workflow_id(
+                family=family,
+                target_task_count=target_task_count,
+                replicate_id=replicate_id,
+                source_sha256=source_sha256,
+            ),
             "family": family,
             "target_task_count": target_task_count,
             "actual_task_count": len(tasks),
             "source_replicate": replicate_id,
-            "source_sha256": sha256(raw).hexdigest(),
+            "source_sha256": source_sha256,
             "reference_mips": reference_mips,
         },
         "tasks": normalized_tasks,

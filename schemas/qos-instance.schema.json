@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/qos-instance.schema.json",
+  "title": "Materialized joint deadline-budget instance metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "instance_id",
+    "base_instance_id",
+    "profile",
+    "source_sha256",
+    "resource_scale",
+    "scenario_profile",
+    "ifc_realization_seed",
+    "deadline",
+    "budget",
+    "calibration",
+    "joint_feasibility_witness",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+    "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+    "profile": {"$ref": "common.schema.json#/$defs/qosProfile"},
+    "source_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "resource_scale": {"$ref": "common.schema.json#/$defs/resourceScale"},
+    "scenario_profile": {"$ref": "common.schema.json#/$defs/scenarioProfile"},
+    "ifc_realization_seed": {"type": "integer", "minimum": 0},
+    "deadline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t_ref_us", "factor_numerator", "factor_denominator", "deadline_us"],
+      "properties": {
+        "t_ref_us": {"type": "integer", "minimum": 1},
+        "factor_numerator": {"type": "integer", "minimum": 1},
+        "factor_denominator": {"type": "integer", "minimum": 1},
+        "deadline_us": {"type": "integer", "minimum": 1}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cost_time_ncu",
+        "cost_floor_ref_ncu",
+        "budget_gap_ncu",
+        "factor_numerator",
+        "factor_denominator",
+        "budget_ncu",
+        "budget_range_degenerate"
+      ],
+      "properties": {
+        "cost_time_ncu": {"type": "integer", "minimum": 0},
+        "cost_floor_ref_ncu": {"type": "integer", "minimum": 0},
+        "budget_gap_ncu": {"type": "integer", "minimum": 0},
+        "factor_numerator": {"type": "integer", "minimum": 0},
+        "factor_denominator": {"type": "integer", "minimum": 1},
+        "budget_ncu": {"type": "integer", "minimum": 0},
+        "budget_range_degenerate": {"type": "boolean"}
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heft_scheduler_version",
+        "cheapest_scheduler_version",
+        "moheft_scheduler_version",
+        "moheft_k",
+        "candidate_set_sha256"
+      ],
+      "properties": {
+        "heft_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
+        "cheapest_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
+        "moheft_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
+        "moheft_k": {"const": 50},
+        "candidate_set_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "joint_feasibility_witness": {"$ref": "common.schema.json#/$defs/schedule"},
+    "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/common.schema.json",
+  "title": "IFC benchmark common definitions",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "taskIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*->).+$"
+    },
+    "positiveDecimal": {
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$"
+    },
+    "family": {
+      "enum": ["montage", "cybershake", "ligo", "sipht", "genome"]
+    },
+    "replicate": {
+      "enum": ["r01", "r02", "r03"]
+    },
+    "resourceScale": {
+      "enum": ["S01", "S02", "S03"]
+    },
+    "scenarioProfile": {
+      "enum": ["balanced", "compute_constrained", "network_constrained"]
+    },
+    "qosProfile": {
+      "enum": ["tight", "moderate", "relaxed"]
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "source_runtime_s", "work_mi"],
+      "properties": {
+        "task_id": {"$ref": "#/$defs/taskIdentifier"},
+        "source_runtime_s": {"$ref": "#/$defs/positiveDecimal"},
+        "work_mi": {"$ref": "#/$defs/positiveDecimal"}
+      }
+    },
+    "transferFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "producer_size_bytes",
+        "consumer_declared_sizes_bytes",
+        "consumer_size_matches_producer"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "producer_size_bytes": {"type": "integer", "minimum": 0},
+        "consumer_declared_sizes_bytes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 0}
+        },
+        "consumer_size_matches_producer": {"type": "boolean"}
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent",
+        "child",
+        "data_bytes",
+        "data_bits",
+        "data_size_source",
+        "transfer_files"
+      ],
+      "properties": {
+        "parent": {"$ref": "#/$defs/taskIdentifier"},
+        "child": {"$ref": "#/$defs/taskIdentifier"},
+        "data_bytes": {"type": "integer", "minimum": 0},
+        "data_bits": {"type": "integer", "minimum": 0},
+        "data_size_source": {"const": "producer_output"},
+        "transfer_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/transferFile"}
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource_id",
+        "tier",
+        "class",
+        "mips",
+        "memory_mb",
+        "concurrency_slots",
+        "active_power_mw",
+        "idle_power_mw",
+        "price_ncu_per_second"
+      ],
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "pattern": "^(iot|fog|cloud)-[0-9]{3,}$"
+        },
+        "tier": {"enum": ["iot", "fog", "cloud"]},
+        "class": {"enum": ["economy", "balanced", "performance"]},
+        "mips": {"type": "integer", "minimum": 1},
+        "memory_mb": {"type": "integer", "minimum": 1},
+        "concurrency_slots": {"const": 1},
+        "active_power_mw": {"type": "integer", "minimum": 1},
+        "idle_power_mw": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "price_ncu_per_second": {"type": "integer", "minimum": 0}
+      }
+    },
+    "networkSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bandwidth_mbps", "latency_us", "energy_pj_per_bit"],
+      "properties": {
+        "bandwidth_mbps": {"type": "integer", "minimum": 1},
+        "latency_us": {"type": "integer", "minimum": 1},
+        "energy_pj_per_bit": {"type": "integer", "minimum": 1}
+      }
+    },
+    "scheduleAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "resource_id", "start_us", "end_us"],
+      "properties": {
+        "task_id": {"$ref": "#/$defs/taskIdentifier"},
+        "resource_id": {
+          "type": "string",
+          "pattern": "^(iot|fog|cloud)-[0-9]{3,}$"
+        },
+        "start_us": {"type": "integer", "minimum": 0},
+        "end_us": {"type": "integer", "minimum": 1}
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schedule_id",
+        "schedule_sha256",
+        "assignments",
+        "makespan_us",
+        "compute_cost_ncu",
+        "compute_energy_nj",
+        "network_energy_pj"
+      ],
+      "properties": {
+        "schedule_id": {"$ref": "#/$defs/identifier"},
+        "schedule_sha256": {"$ref": "#/$defs/sha256"},
+        "assignments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/scheduleAssignment"}
+        },
+        "makespan_us": {"type": "integer", "minimum": 1},
+        "compute_cost_ncu": {"type": "integer", "minimum": 0},
+        "compute_energy_nj": {"type": "integer", "minimum": 0},
+        "network_energy_pj": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
