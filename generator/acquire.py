@@ -80,21 +80,33 @@ def _acquire_one(
     failures: list[str] = []
     relative_executable = str(executable.relative_to(upstream_dir))
     for attempt in range(1, max_attempts + 1):
-        command = [relative_executable, "-a", application, "-n", str(target)]
+        # Bharathi's --numjobs is a model input, not an exact-output contract for
+        # every workflow family (SIPHT is one example). Search upward in a fixed
+        # predeclared order while accepting only an exact parsed task count.
+        requested_numjobs = target + attempt - 1
+        command = [relative_executable, "-a", application, "-n", str(requested_numjobs)]
         try:
             result = runner(command, upstream_dir)
         except (OSError, subprocess.SubprocessError) as exc:
-            failures.append(f"attempt {attempt}: process error {type(exc).__name__}: {exc}")
+            failures.append(
+                f"attempt {attempt} (requested {requested_numjobs}): "
+                f"process error {type(exc).__name__}: {exc}"
+            )
             continue
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
-            failures.append(f"attempt {attempt}: exit {result.returncode}: {stderr[:240]}")
+            failures.append(
+                f"attempt {attempt} (requested {requested_numjobs}): "
+                f"exit {result.returncode}: {stderr[:240]}"
+            )
             continue
 
         raw = result.stdout
         checksum = sha256(raw).hexdigest()
         if checksum in used_checksums:
-            failures.append(f"attempt {attempt}: duplicate checksum {checksum}")
+            failures.append(
+                f"attempt {attempt} (requested {requested_numjobs}): duplicate checksum {checksum}"
+            )
             continue
         try:
             normalized = normalize_dax(
@@ -105,13 +117,14 @@ def _acquire_one(
                 reference_mips=reference_mips,
             )
         except DaxValidationError as exc:
-            failures.append(f"attempt {attempt}: {exc}")
+            failures.append(f"attempt {attempt} (requested {requested_numjobs}): {exc}")
             continue
 
         return raw, {
             "family": family,
             "application": application,
             "target_task_count": target,
+            "requested_numjobs": requested_numjobs,
             "actual_task_count": normalized["metadata"]["actual_task_count"],
             "replicate_id": replicate_id,
             "acquisition_attempt": attempt,
