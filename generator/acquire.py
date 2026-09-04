@@ -66,6 +66,22 @@ def _request_step(family: str) -> int:
     return 2 if family == "ligo" else 1
 
 
+def _attempts_per_request(acquisition_cfg: dict, family: str) -> int:
+    configured = acquisition_cfg.get("attempts_per_requested_numjobs")
+    if isinstance(configured, dict):
+        value = configured.get(family, configured.get("default"))
+    elif configured is not None:
+        value = configured
+    else:
+        # LIGO may fail topology construction stochastically even for a valid
+        # exact request. SIPHT's count mapping instead needs enough search
+        # breadth to reach values such as 620 -> 600 actual tasks.
+        value = 5 if family == "ligo" else 2
+    if value is None or int(value) <= 0:
+        raise AcquisitionError("attempts_per_requested_numjobs must resolve to > 0")
+    return int(value)
+
+
 def _acquire_one(
     *,
     executable: Path,
@@ -82,15 +98,11 @@ def _acquire_one(
     application = FAMILY_TO_APPLICATION.get(family)
     if application is None:
         raise AcquisitionError(f"unsupported workflow family {family!r}")
-    if attempts_per_requested_numjobs <= 0:
-        raise AcquisitionError("attempts_per_requested_numjobs must be > 0")
 
     failures: list[str] = []
     relative_executable = str(executable.relative_to(upstream_dir))
     request_step = _request_step(family)
     for attempt in range(1, max_attempts + 1):
-        # Upstream generation is stochastic. Retry the same request several
-        # times before interpreting a mismatch as evidence to search upward.
         request_index = (attempt - 1) // attempts_per_requested_numjobs
         requested_numjobs = target + request_index * request_step
         command = [relative_executable, "-a", application, "-n", str(requested_numjobs)]
@@ -165,7 +177,6 @@ def acquire_source_workflows(
     replicates = list(workflows["source_replicates"])
     acquisition_cfg = source_cfg["acquisition"]
     max_attempts = int(acquisition_cfg["max_attempts_per_replicate"])
-    attempts_per_requested_numjobs = int(acquisition_cfg.get("attempts_per_requested_numjobs", 5))
     reference_mips = int(workflows["reference_mips"])
     pinned_commit = str(source_cfg["pinned_commit"])
     source_namespace = f"pegasus-bharathi-{pinned_commit[:8]}"
@@ -179,6 +190,7 @@ def acquire_source_workflows(
         )
 
     for family in families:
+        attempts_per_requested_numjobs = _attempts_per_request(acquisition_cfg, family)
         used_checksums_by_target: dict[int, set[str]] = {target: set() for target in targets}
         for target in targets:
             for replicate_id in replicates:
