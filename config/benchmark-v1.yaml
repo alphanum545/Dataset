@@ -17,6 +17,7 @@ source_workflows:
     attempts_per_requested_numjobs:
       default: 2
       ligo: 5
+    genome_exact_lanes: 1
     accept_only_exact_task_count: true
     accept_first_structurally_valid_matches: true
     require_distinct_replicate_checksums: true

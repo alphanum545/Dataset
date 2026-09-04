@@ -8,8 +8,9 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Raw Pegasus/Bharathi DAX source artifacts are immutable after acquisition and identified by checksum; do not claim an upstream workflow seed controls legacy Bharathi randomness.
 - Core v1 size labels are exact actual task counts: `60, 100, 200, 400, 600, 800, 1000`; `allowed_size_deviation = 0`.
 - The earlier 50-task common target was retired before dataset freeze because the pinned Bharathi Genome model cannot structurally produce exactly 50 tasks. Do not silently relabel a nearby Genome workflow as 50.
-- Bharathi `--numjobs/-n` is an upstream model input, not an exact-output guarantee for every family. Acquisition searches a deterministic family-aware request sequence within the configured total attempt bound and accepts only a parsed DAX whose actual task count equals the benchmark target; record `requested_numjobs` separately from actual count.
-- The default acquisition policy retries each request twice before increasing it by one. LIGO retries each even request five times and advances by two because odd requests are rejected upstream and valid requests can fail topology construction stochastically.
+- Bharathi `--numjobs/-n` is an upstream model input, not an exact-output guarantee for every family. For Montage, CyberShake, SIPHT, and LIGO, acquisition uses the configured deterministic request search and accepts only a parsed DAX whose actual task count equals the benchmark target.
+- Genome is acquired through the pinned generator's explicit `--lanes/-l` and `--sequences/-s` interface, not `--numjobs`. Core v1 uses one Genome lane and `sequences = target/4 - 1`, which yields exactly `4*sequences + 4 = target` for every configured common size. Manifest entries record `request_mode`, `requested_lanes`, and `requested_sequences`; `requested_numjobs` is null for Genome.
+- The default `--numjobs` acquisition policy retries each request twice before increasing it by one. LIGO retries each even request five times and advances by two because odd requests are rejected upstream and valid requests can fail topology construction stochastically.
 - There are exactly three frozen source replicates (`r01`, `r02`, `r03`) per family/size, mapped to IFC realization seeds `101`, `202`, `303`.
 - Scheduler-visible resources are serial execution slots with `concurrency_slots = 1`.
 - Benchmark-owned generation from frozen source DAX, committed configuration, and explicit seeds must be deterministic.
@@ -27,7 +28,7 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
-- The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests exact 60-task acquisition for all five families, plus the observed SIPHT-600 and LIGO-1000 boundary cases, on relevant PRs. After acquisition changes reach `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
+- The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests exact 60-task acquisition for all five families, every configured Genome target, plus the observed SIPHT-600 and LIGO-1000 boundary cases, on relevant PRs. After acquisition changes reach `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
 
 ## Planned structure
 - `docs/` - benchmark specification and methodology.

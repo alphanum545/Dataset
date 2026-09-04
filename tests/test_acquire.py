@@ -34,6 +34,7 @@ def base_config() -> dict:
             "acquisition": {
                 "max_attempts_per_replicate": 8,
                 "attempts_per_requested_numjobs": 2,
+                "genome_exact_lanes": 1,
             },
         },
         "workflows": {
@@ -152,6 +153,52 @@ def test_ligo_search_never_requests_odd_numjobs(tmp_path):
     assert requests == [2, 2, 4, 4, 6]
     assert all(request % 2 == 0 for request in requests)
     assert manifest["entries"][0]["requested_numjobs"] == 6
+
+
+def test_genome_uses_exact_lane_sequence_request(tmp_path):
+    config = base_config()
+    config["workflows"]["families"] = ["genome"]
+    config["workflows"]["requested_task_counts"] = [200]
+    config["workflows"]["source_replicates"] = ["r01"]
+    config["source_workflows"]["expected_raw_artifacts"] = 1
+    commands: list[list[str]] = []
+
+    def runner(command: list[str], cwd: Path) -> CommandResult:
+        commands.append(command)
+        return CommandResult(stdout=dax(200, marker="genome"), stderr=b"", returncode=0)
+
+    manifest = acquire_source_workflows(
+        config,
+        upstream_dir=upstream(tmp_path),
+        output_root=tmp_path / "source_workflows",
+        manifest_path=tmp_path / "manifest.json",
+        runner=runner,
+    )
+
+    assert commands == [["bin/AppGenerator", "-a", "GENOME", "-l", "1", "-s", "49"]]
+    entry = manifest["entries"][0]
+    assert entry["request_mode"] == "genome_lanes_sequences_exact"
+    assert entry["requested_numjobs"] is None
+    assert entry["requested_lanes"] == 1
+    assert entry["requested_sequences"] == 49
+    assert entry["actual_task_count"] == 200
+
+
+def test_genome_rejects_target_not_representable_by_exact_single_lane_mode(tmp_path):
+    config = base_config()
+    config["workflows"]["families"] = ["genome"]
+    config["workflows"]["requested_task_counts"] = [50]
+    config["workflows"]["source_replicates"] = ["r01"]
+    config["source_workflows"]["expected_raw_artifacts"] = 1
+
+    with pytest.raises(AcquisitionError, match="divisible by 4"):
+        acquire_source_workflows(
+            config,
+            upstream_dir=upstream(tmp_path),
+            output_root=tmp_path / "source_workflows",
+            manifest_path=tmp_path / "manifest.json",
+            runner=lambda command, cwd: CommandResult(stdout=b"", stderr=b"", returncode=0),
+        )
 
 
 def test_acquisition_rejects_dimension_count_mismatch(tmp_path):
