@@ -50,13 +50,15 @@ This produces `5 × 7 × 3 = 105` normalized base workflows.
 
 Core v1 size labels are exact actual task counts:
 
-- 50
+- 60
 - 100
 - 200
 - 400
 - 600
 - 800
 - 1000
+
+The earlier 50-task common target was retired before dataset freeze because inspection of the pinned Bharathi Genome implementation showed that its task-count construction cannot produce exactly 50 jobs. Core v1 therefore uses 60 as the smallest common exact target rather than silently accepting or relabelling a nearby Genome workflow.
 
 The acquisition stage passes the desired count through the Bharathi application's `--numjobs/-n` option and accepts only DAX artifacts whose parsed job count equals the target exactly.
 
@@ -94,7 +96,7 @@ For each shared dependency file, **the producer's output size is authoritative**
 
 `edge_data_bytes = sum(parent_output_size(shared_file))`
 
-This rule is required because the pinned legacy Bharathi generator can emit different `size` values on the producer's `output` `<uses>` record and the consumer's `input` `<uses>` record for the same filename. A real Montage-50 upstream smoke run exposed this behavior. Rejecting such edges would reject valid generated workflow dependencies.
+This rule is required because the pinned legacy Bharathi generator can emit different `size` values on the producer's `output` `<uses>` record and the consumer's `input` `<uses>` record for the same filename. A real Montage source smoke run exposed this behavior. Rejecting such edges would reject valid generated workflow dependencies.
 
 The normalized edge therefore preserves, for every shared transfer file:
 
