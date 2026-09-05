@@ -10,7 +10,7 @@ The benchmark dataset is designed and frozen before any proposed scheduling algo
 
 **Stage 3 — pilot IFC benchmark generation and validation.**
 
-The v1 pilot specification, deterministic generator core, and source-workflow acquisition phase are implemented. The 105 exact-size Pegasus/Bharathi source DAX artifacts are committed together with `manifests/source-workflows-v1.json`. A deterministic outcome-independent selector freezes a representative 200-input pilot with a 160-development/40-holdout split before calibration results are observed.
+The v1 pilot specification, deterministic generator core, source-workflow acquisition, outcome-independent 200-input selector, and frozen deterministic calibration portfolio are implemented. The 105 exact-size Pegasus/Bharathi source DAX artifacts are committed together with `manifests/source-workflows-v1.json`. The selected pilot remains split into 160 development and 40 protected holdout inputs before calibration outcomes are observed.
 
 The v1 pilot candidate defines:
 
@@ -22,10 +22,11 @@ The v1 pilot candidate defines:
 - exact execution, cost, compute-energy, and routed network-energy units;
 - a multi-scheduler IFC fast-to-economical deadline envelope;
 - deterministic stratified selection of 200 pilot inputs;
+- deterministic HEFT-IFC, PEFT-IFC, CPOP-IFC, cost-reference-IFC, and MOHEFT calibration;
 - deadline-conditioned budget calibration and joint-feasibility witnesses;
 - source acquisition, reproducibility, validation, and freeze rules.
 
-No materialized IFC benchmark instance is frozen yet. After merging the pilot selection contract, the next step is to implement the frozen IFC reference portfolio and generate only the selected pilot inputs.
+No materialized IFC benchmark instance is frozen yet. The next step is to materialize only the selected 200 base IFC inputs, run the frozen calibration portfolio, and validate envelope/budget behavior before any proposed-algorithm tuning.
 
 ## Candidate v1 matrix
 
@@ -87,8 +88,7 @@ The numerical model uses explicit integer units:
 
 Communication is routed through explicit wireless/LAN/backbone segments rather than using an unexplained J/MB constant.
 
-All schedulers share the authoritative deterministic construction and verification
-semantics in `generator.schedule`; see `docs/SCHEDULE_EVALUATION.md`.
+All schedulers share the authoritative deterministic construction and verification semantics in `generator.schedule`; see `docs/SCHEDULE_EVALUATION.md`. The frozen calibration algorithms and deterministic IFC adaptations are documented in `docs/REFERENCE_SCHEDULERS.md`.
 
 These numerical values are pilot candidates and must pass sensitivity/trade-off validation before dataset freeze.
 
@@ -113,6 +113,8 @@ Dataset/
 │   ├── DEADLINE_STRATEGY.md
 │   ├── BUDGET_STRATEGY.md
 │   ├── PILOT_SELECTION.md
+│   ├── REFERENCE_SCHEDULERS.md
+│   ├── SCHEDULE_EVALUATION.md
 │   ├── RESOURCE_MODEL.md
 │   ├── WORKFLOW_MODEL.md
 │   ├── SOURCE_WORKFLOW_ACQUISITION.md
@@ -129,13 +131,32 @@ Dataset/
 └── tests/
 ```
 
+## Calibration commands
+
+Run the frozen portfolio for one materialized base instance:
+
+```bash
+python -m generator.cli calibrate-instance \
+  --config config/benchmark-v1.yaml \
+  --base-instance <base-instance.json> \
+  --output <calibration-result.json>
+```
+
+Validate all stored candidate schedules against that exact base instance:
+
+```bash
+python -m validation.cli calibration-result \
+  --result <calibration-result.json> \
+  --base-instance <base-instance.json>
+```
+
 ## Experimental workflow
 
 1. Specify and review benchmark semantics. **Done for pilot candidate.**
 2. Implement deterministic source validation and the generator core. **Done.**
 3. Acquire and freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Done.**
-4. Freeze the outcome-independent 200-input pilot selection. **Current.**
-5. Implement the calibration portfolio and materialize only selected pilot inputs.
+4. Freeze the outcome-independent 200-input pilot selection. **Done.**
+5. Implement the calibration portfolio and materialize only selected pilot inputs. **Calibration implementation done; materialization is next.**
 6. Adjust only predeclared pilot parameters if validation demonstrates a benchmark-design problem.
 7. Generate and freeze dataset v1.
 8. Run every baseline algorithm on the same frozen instances.
@@ -144,4 +165,4 @@ Dataset/
 
 ## Status
 
-The v1 raw source-workflow corpus is frozen on `main`; the full IFC benchmark is **not frozen yet**. The selected pilot identities and split are fixed by `manifests/pilot-selection-v1.json`, while reference-scheduler implementation, materialization, calibration, feasibility validation, and sensitivity analysis remain.
+The v1 raw source-workflow corpus and selected pilot identities are frozen on `main`; the full IFC benchmark is **not frozen yet**. The reference calibration implementation is defined, while pilot materialization, calibration-result generation, deadline/budget witness materialization, feasibility validation, and sensitivity analysis remain.
