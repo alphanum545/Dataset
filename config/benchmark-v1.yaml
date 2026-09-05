@@ -221,10 +221,12 @@ cost_model:
 pilot_selection:
   selection_id: pilot-selection-v1
   selector_id: deterministic-stratified-pairwise
-  selector_version: 1
+  selector_version: 2
   seed: 20260905
   candidate_universe_count: 2835
   selected_count: 200
+  require_unique_holdout_bases: true
+  require_base_disjoint_splits: true
   split_counts:
     development: 160
     holdout: 40
