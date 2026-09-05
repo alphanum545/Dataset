@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import load_config
 from .dax import normalize_dax
 from .instance import build_base_instance
+from .pilot import build_pilot_selection_manifest
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -36,12 +37,28 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--scenario", required=True)
     build.add_argument("--seed", required=True, type=int)
     build.add_argument("--output", required=True)
+
+    pilot = sub.add_parser(
+        "select-pilot",
+        help="Freeze the outcome-independent stratified 200-instance pilot selection",
+    )
+    pilot.add_argument("--config", required=True)
+    pilot.add_argument("--source-manifest", required=True)
+    pilot.add_argument("--output", required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = load_config(args.config)
+
+    if args.command == "select-pilot":
+        source_manifest = json.loads(
+            Path(args.source_manifest).read_text(encoding="utf-8")
+        )
+        manifest = build_pilot_selection_manifest(config, source_manifest)
+        _write_json(Path(args.output), manifest)
+        return 0
 
     if args.command == "normalize-dax":
         workflow = normalize_dax(

@@ -15,6 +15,9 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Scheduler-visible resources are serial execution slots with `concurrency_slots = 1`.
 - Benchmark-owned generation from frozen source DAX, committed configuration, and explicit seeds must be deterministic.
 - Deadline/reference and budget calibration must not depend on the proposed novel algorithm.
+- The pilot selector enumerates all 2,835 candidate identities without materializing them, then freezes exactly 200 inputs using selector version 1 and seed `20260905`; scheduler outcomes must never influence selection.
+- The pilot split is exactly 160 development and 40 holdout inputs. Holdout comparative outcomes remain unopened until the proposed mechanism and parameters are frozen.
+- V1 deadlines use exact interpolation between best-known feasible fast and economical IFC calibration anchors (`1/10`, `1/2`, `9/10`), not a multiplier of HEFT makespan.
 - Every core v1 joint deadline-budget instance must have a validated stored/reproducible feasibility witness satisfying both constraints.
 - Exact normalized cost and budget fields must use integer or exact-decimal arithmetic; binary floating point is not permitted for authoritative cost/budget values.
 - Authoritative units are explicit: execution time in microseconds, compute energy in nanojoules, network energy in picojoules, normalized cost/budget in integer nCU.
@@ -24,6 +27,8 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Generator runtime: Python 3.11 or newer.
 - Install development/test dependencies with `python -m pip install -e '.[test]'`.
 - Run the repository test gate with `python -m pytest`.
+- Generate the frozen pilot selection with `python -m generator.cli select-pilot --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --output manifests/pilot-selection-v1.json`.
+- Reproduce and validate it with `python -m validation.cli pilot-selection --manifest manifests/pilot-selection-v1.json --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json`.
 - Invoke the generator CLI with `python -m generator.cli`.
 - Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
 - Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.

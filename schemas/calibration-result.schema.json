@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ifc-workflow-benchmark.org/schemas/calibration-result.schema.json",
-  "title": "Deterministic reference calibration result",
+  "title": "Deterministic IFC reference-envelope calibration result",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,9 +9,9 @@
     "base_instance_id",
     "calibration_version",
     "lower_bounds",
-    "heft",
-    "cheapest_resource_assignment",
+    "reference_schedulers",
     "moheft",
+    "anchors",
     "candidate_set_sha256"
   ],
   "properties": {
@@ -28,11 +28,32 @@
         "t_lb_us": {"type": "integer", "minimum": 1}
       }
     },
-    "heft": {
-      "$ref": "#/$defs/calibrationScheduler"
+    "reference_schedulers": {
+      "type": "array",
+      "minItems": 4,
+      "items": {"$ref": "#/$defs/calibrationScheduler"}
     },
-    "cheapest_resource_assignment": {
-      "$ref": "#/$defs/calibrationScheduler"
+    "anchors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fast_schedule_id",
+        "economical_schedule_id",
+        "t_fast_us",
+        "t_economical_us",
+        "cost_fast_ncu",
+        "cost_economical_ncu",
+        "deadline_range_degenerate"
+      ],
+      "properties": {
+        "fast_schedule_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "economical_schedule_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "t_fast_us": {"type": "integer", "minimum": 1},
+        "t_economical_us": {"type": "integer", "minimum": 1},
+        "cost_fast_ncu": {"type": "integer", "minimum": 0},
+        "cost_economical_ncu": {"type": "integer", "minimum": 0},
+        "deadline_range_degenerate": {"type": "boolean"}
+      }
     },
     "moheft": {
       "type": "object",

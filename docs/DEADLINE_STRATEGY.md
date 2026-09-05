@@ -1,116 +1,122 @@
-# Deadline and Reference-Makespan Strategy — v1 Draft
+# Deadline and Reference-Envelope Strategy — v1 Draft
 
 ## Goal
 
-Deadlines must be reproducible, algorithm-neutral with respect to the proposed method, and interpretable across heterogeneous workflow instances. A deadline must never be generated independently by each scheduling algorithm.
+Deadlines must be reproducible, jointly feasible with their budgets, and independent of the proposed novel algorithm. Every compared scheduler receives the same stored deadline; no experimental algorithm recalculates it.
 
-## Stored reference values
+The original pilot proposal used a fixed multiple of deterministic HEFT makespan. V1 now uses a feasible time–cost envelope so one heuristic does not control benchmark difficulty.
 
-For every benchmark instance, store:
+## Frozen calibration set
 
-- `t_cp_lb`: optimistic critical-path lower bound;
-- `t_capacity_lb`: aggregate workload/capacity lower bound;
-- `t_lb = max(t_cp_lb, t_capacity_lb)`;
-- `t_ref`: deterministic calibration-scheduler makespan;
-- exact rational deadline factor numerator/denominator;
-- absolute integer-microsecond deadline;
-- calibration scheduler identity/version;
-- calibration schedule checksum or reproducible schedule metadata.
+For every selected base IoT–Fog–Cloud instance, construct schedules using the same authoritative evaluator and all eligible resources:
 
-The lower bound and calibration reference serve different purposes. `t_lb` measures theoretical difficulty; `t_ref` provides a reproducibly feasible schedule reference.
+- deterministic HEFT-IFC;
+- deterministic PEFT-IFC;
+- deterministic CPOP-IFC;
+- a deterministic cost-oriented IFC reference;
+- the retained deterministic MOHEFT calibration schedules used for joint budget calibration.
 
-## Lower bound
+The proposed algorithm is permanently excluded. Scheduler implementations, versions, exact arithmetic, resource iteration order, and tie-breaking must be frozen before proposed-algorithm development.
 
-### Critical-path component
+This collection is a **calibration set**, not a claim of the exact Pareto frontier.
 
-For each task, use its optimistic execution time over eligible resources. For each dependency, use the most optimistic valid communication time between eligible resource placements. Compute the longest path from entry to exit in the DAG.
+## Lower bounds
 
-The result is a lower bound because it ignores contention and assumes each task/dependency can independently obtain its most favorable placement.
+Store two diagnostic lower-bound components:
 
-### Capacity component
+- `t_cp_lb_us` — optimistic critical-path time using the most favorable eligible execution and communication values;
+- `t_capacity_lb_us` — aggregate work/capacity relaxation.
 
-Compute total workflow work and compare it against the aggregate usable compute capacity of the resource pool. The exact formula and unit normalization must be fixed in generator code and tested.
-
-### Combined lower bound
+Define:
 
 `T_LB = max(T_CP, T_CAPACITY)`
 
-This value is diagnostic and must not be labelled an optimum.
+The lower bound measures difficulty but does not define the deadline because it need not be attainable.
 
-## Calibration scheduler
+## Feasible envelope anchors
 
-The v1 calibration scheduler is deterministic HEFT.
+From all validated calibration schedules, select:
 
-Reasons:
+### Fast anchor
 
-- it is a well-known static heterogeneous DAG scheduler;
-- it uses the same execution and communication matrices available to all algorithms;
-- it scales to the largest planned workflows;
-- it provides an actual feasible schedule rather than only a lower bound;
-- it is fixed before the proposed novel algorithm is designed, preventing circular tuning.
+`S_fast` is the schedule with minimum makespan. Ties use lower exact compute cost and then canonical schedule ID.
 
-The implementation must use deterministic tie-breaking. Given the same instance, it must produce the same schedule and `t_ref` on every run.
+Store:
 
-The benchmark documentation must state clearly that `t_ref` is a calibration reference, not the true optimum.
+- `T_fast = makespan(S_fast)`;
+- `C_fast = cost(S_fast)`;
+- schedule ID and checksum.
+
+### Economical anchor
+
+`S_economical` is the schedule with minimum exact compute cost. Ties use lower makespan and then canonical schedule ID.
+
+Store:
+
+- `T_economical = makespan(S_economical)`;
+- `C_economical = cost(S_economical)`;
+- schedule ID and checksum.
+
+Because `S_fast` is selected from the same set, `T_fast <= T_economical`. Because `S_economical` is the least-cost member, `C_economical <= C_fast`.
+
+These are **best-known feasible anchors**, not mathematical optima.
 
 ## Deadline profiles
 
-Version 1 uses three paired QoS profiles. Their exact rational factors are:
+Let:
 
-| Level | Rational factor | Decimal interpretation |
-| --- | ---: | ---: |
-| tight | `5/4` | 1.25 |
-| moderate | `3/2` | 1.50 |
-| relaxed | `2/1` | 2.00 |
+`time_gap_us = T_economical - T_fast`
 
-For factor `alpha = p/q`:
+For profile fraction `alpha = p/q`, materialize:
 
-`deadline_us = ceil(p × t_ref_us / q)`
+`deadline_us = T_fast + ceil(p × time_gap_us / q)`
 
-The frozen deadline is stored as an integer number of microseconds. Experimental algorithms read that value rather than recalculate it.
+The frozen profiles are:
 
-## Feasibility witness
+| Profile | Fraction | Interpretation |
+| --- | ---: | --- |
+| tight | `1/10` | 10% of the feasible time–cost interval above the fast anchor |
+| moderate | `1/2` | midpoint of the interval |
+| relaxed | `9/10` | 90% of the interval toward the economical anchor |
 
-Because every deadline factor is at least 1, the stored HEFT calibration schedule is a deadline-feasibility witness. Validation confirms its makespan is `<= deadline_us`.
+All calculations use integers and exact rational arithmetic. Binary floating point is forbidden.
 
-For the core v1 benchmark, budget generation is now explicitly conditioned on this deadline. `BUDGET_STRATEGY.md` selects a known schedule that satisfies the deadline and uses its cost as the lower endpoint of the feasible budget range. As a result, every primary deadline-budget pair has a stored joint feasibility witness.
+## Feasibility
 
-## Why not use only a theoretical lower bound for the deadline?
+Every profile satisfies `deadline >= T_fast`; therefore `S_fast` is a deadline-feasibility witness. Budget generation then searches the calibration set for the least-cost schedule meeting that exact deadline and stores the selected schedule as the joint deadline–budget witness.
 
-A deadline such as `alpha × T_LB` can be impossible even for moderate `alpha`, because the lower bound ignores resource contention and other scheduling interactions. That makes it difficult to distinguish an algorithm failure from an intentionally infeasible benchmark case.
+If `T_fast = T_economical`, the deadline interval has zero width. The instance remains reproducible, but it must set `deadline_range_degenerate = true`. Aggregate pilot validation must report the rate; a high rate is a benchmark-design failure requiring review before freeze.
 
-The dataset therefore stores `T_LB` for hardness analysis but anchors the primary deadline profile to a known feasible calibration schedule.
+## Why this is IoT–Fog–Cloud aware
 
-## Why not use the proposed algorithm?
+Every calibration scheduler receives the full IoT, Fog, and Cloud resource pool, task execution matrix, resource contention, and route-specific communication model. A valid schedule is not forced to use all three tiers; placement is chosen according to the model. Artificial mandatory tier usage would change the scheduling problem.
 
-Using the proposed algorithm to create its own deadline would bias the benchmark and make later comparisons circular. The proposed algorithm must never participate in dataset calibration.
+## Stored values
 
-## Additional diagnostic quantity
+Each calibration/QoS artifact records at least:
 
-Store normalized deadline tightness relative to the lower bound:
-
-`deadline_lb_ratio = deadline / T_LB`
-
-This helps compare how intrinsically tight two instances are even if HEFT quality differs between workflow families or infrastructure profiles.
+- lower-bound components and `T_LB`;
+- calibration scheduler identities and versions;
+- calibration candidate-set checksum;
+- fast/economical schedule IDs and checksums;
+- `T_fast`, `T_economical`, and `time_gap_us`;
+- exact interpolation numerator and denominator;
+- absolute integer-microsecond deadline;
+- degeneracy flag;
+- joint-feasibility witness metadata.
 
 ## Validation rules
 
-For each instance:
+For every materialized profile:
 
-1. `T_LB > 0`.
-2. `T_ref >= T_LB` within the frozen integer/tolerance policy.
-3. calibration schedule is precedence-valid and resource-valid.
-4. stored `T_ref` equals the makespan of the stored/recomputed deterministic calibration schedule.
-5. deadline factor belongs to the frozen rational factor set.
-6. `deadline_us = ceil(p × t_ref_us / q)` exactly.
-7. HEFT calibration makespan is not greater than the stored deadline.
-8. all values and calculation-version metadata are recorded in the manifest.
-9. the paired budget profile passes every joint-feasibility rule in `BUDGET_STRATEGY.md`.
+1. every calibration schedule passes the authoritative evaluator;
+2. every calibration makespan is at least `T_LB`;
+3. the fast and economical anchors reproduce from the frozen tie-breaking rules;
+4. `time_gap_us = T_economical - T_fast >= 0`;
+5. the profile fraction matches committed configuration;
+6. the deadline reconstructs exactly from the interpolation rule;
+7. `S_fast` meets the deadline;
+8. the stored joint witness meets both deadline and budget;
+9. repeated calibration yields identical identities, totals, and checksums.
 
-## Budget interaction
-
-Budget and deadline are separate quantities but are calibrated jointly for the primary v1 benchmark.
-
-The budget strategy computes a deterministic cost–makespan calibration set, filters it by the already materialized deadline, chooses the cheapest known deadline-feasible schedule, and interpolates the budget between that cost and the HEFT cost. This avoids assuming that independently selected time and cost constraints are jointly satisfiable.
-
-Full rules, exact cost representation, budget factors, degenerate-range handling, and witness requirements are defined in `BUDGET_STRATEGY.md`.
+The deadline methodology must be frozen before the 40 holdout outcomes are inspected.

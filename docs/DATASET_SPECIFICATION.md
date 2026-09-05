@@ -64,7 +64,7 @@ Each tier has economy, balanced, and performance classes except a two-resource t
 
 Scenario multipliers are exact rationals committed in configuration.
 
-### 2.6 Joint QoS profiles
+### 2.6 Joint QoS profiles and development pilot
 
 Each base workflow/infrastructure realization produces exactly three primary joint deadline-budget profiles:
 
@@ -76,7 +76,7 @@ The core matrix remains:
 
 `5 families × 7 sizes × 3 source replicates × 3 resource scales × 3 scenario profiles × 3 QoS profiles = 2,835 instances`
 
-With seven evaluated algorithms this is `19,845` algorithm-instance runs before repeated stochastic scheduler seeds.
+The immediate development pilot deterministically selects 200 identities from this matrix before scheduler outcomes are observed. It is split into 160 development and 40 holdout inputs. Exact marginal quotas and complete pairwise coverage are defined in `PILOT_SELECTION.md`.
 
 ## 3. Canonical instance model
 
@@ -149,9 +149,9 @@ Same-resource communication is zero. Same-tier communication between different r
 Each instance stores rather than recomputes:
 
 - theoretical makespan lower-bound components;
-- deterministic HEFT reference makespan;
-- exact rational deadline factor and absolute deadline;
-- HEFT schedule cost;
+- best-known feasible fast and economical calibration anchors;
+- exact rational deadline-envelope fraction and absolute deadline;
+- fast-anchor schedule cost;
 - deadline-conditioned feasible cost-floor reference;
 - exact rational budget-gap factor and absolute budget;
 - joint feasibility witness identifier/checksum;
@@ -213,25 +213,25 @@ The pilot uses a first-order radio model for IoT wireless segments and Ethernet/
 
 is diagnostic only.
 
-`T_ref` comes from deterministic HEFT with fixed tie-breaking and the canonical execution/communication model.
+`T_fast` is the minimum validated makespan in the frozen IFC calibration set. `T_economical` is the makespan of the minimum-cost member of that same set. Both are feasible best-known references, not claimed optima.
 
-Deadline factors are exact rationals:
+Deadline-envelope fractions are exact rationals:
 
-- tight `5/4`;
-- moderate `3/2`;
-- relaxed `2/1`.
+- tight `1/10`;
+- moderate `1/2`;
+- relaxed `9/10`.
 
-`deadline_us = ceil(factor_num × t_ref_us / factor_den)`
+`deadline_us = T_fast + ceil(fraction_num × (T_economical - T_fast) / fraction_den)`
 
 ## 9. Budget and joint feasibility
 
-Generate a deterministic calibration set from MOHEFT (`K=50`) plus HEFT and cheapest-resource-assignment endpoints.
+Generate a deterministic calibration set from MOHEFT (`K=50`), HEFT-IFC, PEFT-IFC, CPOP-IFC, and a deterministic cost-oriented IFC reference.
 
 For deadline `D`:
 
 `C_floor_ref(D) = minimum exact cost among calibration schedules with makespan <= D`
 
-Let `C_time` be HEFT cost. Budget-gap fractions are:
+Let `C_fast` be the cost of the fast-anchor schedule. Budget-gap fractions are:
 
 - tight `1/10`;
 - moderate `1/2`;
@@ -239,7 +239,7 @@ Let `C_time` be HEFT cost. Budget-gap fractions are:
 
 For `beta=p/q`:
 
-`budget_ncu = C_floor_ref(D) + floor(p × (C_time - C_floor_ref(D)) / q)`
+`budget_ncu = C_floor_ref(D) + floor(p × (C_fast - C_floor_ref(D)) / q)`
 
 The schedule that produced `C_floor_ref(D)` is the joint feasibility witness.
 

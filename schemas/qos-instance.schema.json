@@ -31,19 +31,34 @@
     "deadline": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["t_ref_us", "factor_numerator", "factor_denominator", "deadline_us"],
+      "required": [
+        "fast_schedule_id",
+        "economical_schedule_id",
+        "t_fast_us",
+        "t_economical_us",
+        "time_gap_us",
+        "interpolation_numerator",
+        "interpolation_denominator",
+        "deadline_us",
+        "deadline_range_degenerate"
+      ],
       "properties": {
-        "t_ref_us": {"type": "integer", "minimum": 1},
-        "factor_numerator": {"type": "integer", "minimum": 1},
-        "factor_denominator": {"type": "integer", "minimum": 1},
-        "deadline_us": {"type": "integer", "minimum": 1}
+        "fast_schedule_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "economical_schedule_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "t_fast_us": {"type": "integer", "minimum": 1},
+        "t_economical_us": {"type": "integer", "minimum": 1},
+        "time_gap_us": {"type": "integer", "minimum": 0},
+        "interpolation_numerator": {"type": "integer", "minimum": 0},
+        "interpolation_denominator": {"type": "integer", "minimum": 1},
+        "deadline_us": {"type": "integer", "minimum": 1},
+        "deadline_range_degenerate": {"type": "boolean"}
       }
     },
     "budget": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "cost_time_ncu",
+        "cost_fast_ncu",
         "cost_floor_ref_ncu",
         "budget_gap_ncu",
         "factor_numerator",
@@ -52,7 +67,7 @@
         "budget_range_degenerate"
       ],
       "properties": {
-        "cost_time_ncu": {"type": "integer", "minimum": 0},
+        "cost_fast_ncu": {"type": "integer", "minimum": 0},
         "cost_floor_ref_ncu": {"type": "integer", "minimum": 0},
         "budget_gap_ncu": {"type": "integer", "minimum": 0},
         "factor_numerator": {"type": "integer", "minimum": 0},
@@ -65,15 +80,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "heft_scheduler_version",
-        "cheapest_scheduler_version",
+        "reference_scheduler_versions",
         "moheft_scheduler_version",
         "moheft_k",
         "candidate_set_sha256"
       ],
       "properties": {
-        "heft_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
-        "cheapest_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
+        "reference_scheduler_versions": {
+          "type": "object",
+          "minProperties": 4,
+          "additionalProperties": {"$ref": "common.schema.json#/$defs/identifier"}
+        },
         "moheft_scheduler_version": {"$ref": "common.schema.json#/$defs/identifier"},
         "moheft_k": {"const": 50},
         "candidate_set_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
