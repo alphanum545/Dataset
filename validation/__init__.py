@@ -1,7 +1,11 @@
 """Schema and semantic validators for IFC benchmark artifacts."""
 
-from .calibration import validate_calibration_result
+from .calibration import (
+    validate_calibration_result,
+    validate_calibration_result_against_instance,
+)
 from .errors import BenchmarkValidationError, SchemaValidationError
+from .materialization import validate_pilot_materialization_manifest
 from .semantic import (
     validate_base_instance,
     validate_dataset_manifest,
@@ -19,9 +23,11 @@ __all__ = [
     "SchemaValidationError",
     "validate_base_instance",
     "validate_calibration_result",
+    "validate_calibration_result_against_instance",
     "validate_dataset_manifest",
     "validate_network",
     "validate_normalized_workflow",
+    "validate_pilot_materialization_manifest",
     "validate_pilot_selection",
     "validate_qos_instance",
     "validate_resources",
