@@ -22,6 +22,10 @@ on:
       - source_workflows/**
       - .github/workflows/full-pilot-materialization.yml
 
+concurrency:
+  group: full-pilot-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   materialize-and-validate:
     runs-on: ubuntu-latest
