@@ -8,6 +8,7 @@ from .config import load_config
 from .dax import normalize_dax
 from .instance import build_base_instance
 from .pilot import build_pilot_selection_manifest
+from .reference_schedulers import build_calibration_result
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -45,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
     pilot.add_argument("--config", required=True)
     pilot.add_argument("--source-manifest", required=True)
     pilot.add_argument("--output", required=True)
+
+    calibration = sub.add_parser(
+        "calibrate-instance",
+        help="Run the frozen deterministic IFC calibration portfolio on one base instance",
+    )
+    calibration.add_argument("--config", required=True)
+    calibration.add_argument("--base-instance", required=True)
+    calibration.add_argument("--output", required=True)
     return parser
 
 
@@ -69,6 +78,13 @@ def main(argv: list[str] | None = None) -> int:
             reference_mips=int(config["workflows"]["reference_mips"]),
         )
         _write_json(Path(args.output), workflow)
+        return 0
+
+    if args.command == "calibrate-instance":
+        instance = json.loads(Path(args.base_instance).read_text(encoding="utf-8"))
+        k = int(config["budget"]["calibration"]["tradeoff_solutions"])
+        result = build_calibration_result(instance, k=k)
+        _write_json(Path(args.output), result)
         return 0
 
     workflow = json.loads(Path(args.normalized_workflow).read_text(encoding="utf-8"))
