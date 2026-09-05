@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Mapping
 
 from .exact import ceil_div, mul_ratio_floor
 
@@ -57,15 +57,15 @@ def placement_route_key(source_tier: str, target_tier: str, *, same_resource: bo
 
 
 def route_metrics(
-    network: dict[str, Any],
+    network: Mapping[str, Any],
     *,
     source_tier: str,
     target_tier: str,
     same_resource: bool,
     data_bits: int,
 ) -> dict[str, int]:
-    if data_bits < 0:
-        raise ValueError("data_bits must be >= 0")
+    if not isinstance(data_bits, int) or isinstance(data_bits, bool) or data_bits < 0:
+        raise ValueError("data_bits must be an exact integer >= 0")
     route_key = placement_route_key(source_tier, target_tier, same_resource=same_resource)
     if route_key is None or data_bits == 0:
         return {"communication_time_us": 0, "communication_energy_pj": 0}
@@ -74,6 +74,31 @@ def route_metrics(
     energy_pj = 0
     for segment_name in network["routes"][route_key]:
         segment = network["segments"][segment_name]
-        time_us += int(segment["latency_us"]) + ceil_div(data_bits, int(segment["bandwidth_mbps"]))
+        time_us += int(segment["latency_us"]) + ceil_div(
+            data_bits, int(segment["bandwidth_mbps"])
+        )
         energy_pj += data_bits * int(segment["energy_pj_per_bit"])
     return {"communication_time_us": time_us, "communication_energy_pj": energy_pj}
+
+
+def resource_route_metrics(
+    network: Mapping[str, Any],
+    resource_tiers: Mapping[str, str],
+    *,
+    source_resource_id: str,
+    target_resource_id: str,
+    data_bits: int,
+) -> dict[str, int]:
+    """Derive one dependency transfer from compact IFC network/resource inputs."""
+    try:
+        source_tier = resource_tiers[source_resource_id]
+        target_tier = resource_tiers[target_resource_id]
+    except KeyError as exc:
+        raise ValueError(f"unknown resource in communication pair: {exc.args[0]!r}") from exc
+    return route_metrics(
+        network,
+        source_tier=source_tier,
+        target_tier=target_tier,
+        same_resource=source_resource_id == target_resource_id,
+        data_bits=data_bits,
+    )
