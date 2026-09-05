@@ -17,6 +17,9 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Deadline/reference and budget calibration must not depend on the proposed novel algorithm.
 - The pilot selector enumerates all 2,835 candidate identities without materializing them, then freezes exactly 200 inputs using selector version 1 and seed `20260905`; scheduler outcomes must never influence selection.
 - The pilot split is exactly 160 development and 40 holdout inputs. Holdout comparative outcomes remain unopened until the proposed mechanism and parameters are frozen.
+- Pilot materialization must preserve each frozen `candidate_id` as the QoS `instance_id`; it may not add, drop, rename, or reassign selected candidates or their development/holdout split.
+- Selected QoS entries sharing the same workflow/resource/scenario/seed realization share one `base_instance_id`; generate that base and calibration once and reuse them for the associated QoS profiles.
+- The pilot materialization manifest is the provenance index for all base, calibration, and QoS artifacts and must record the frozen selection/config/source checksums, generator commit SHA, split counts, artifact paths/checksums, and its own content checksum.
 - V1 deadlines use exact interpolation between best-known feasible fast and economical IFC calibration anchors (`1/10`, `1/2`, `9/10`), not a multiplier of HEFT makespan.
 - The frozen calibration portfolio is `deterministic_heft_ifc`, `deterministic_peft_ifc`, `deterministic_cpop_ifc`, `deterministic_cost_reference_ifc`, plus `deterministic_moheft` with `K = 50`; the implementation version is `ifc_v1`.
 - Reference schedulers may choose task priority and resource mapping only. Final timing, contention, communication, cost, energy, identity, and feasibility must be produced/rechecked by `generator.schedule`.
@@ -24,9 +27,11 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - MOHEFT primary objectives are makespan and exact compute cost. Its nondominated ranking and crowding calculations must remain deterministic and must not use binary floating point.
 - Distinct reference scheduler IDs may legitimately produce the same canonical schedule; do not reject reference convergence. Stored MOHEFT candidates must be unique and must not duplicate an explicit reference output.
 - Every core v1 joint deadline-budget instance must have a validated stored/reproducible feasibility witness satisfying both constraints.
+- The deadline-conditioned cost-floor witness is selected by exact compute cost, then makespan, then lexicographic complete task-to-resource mapping, then schedule ID; do not change this tie order silently.
 - Exact normalized cost and budget fields must use integer or exact-decimal arithmetic; binary floating point is not permitted for authoritative cost/budget values.
 - Authoritative units are explicit: execution time in microseconds, compute energy in nanojoules, network energy in picojoules, normalized cost/budget in integer nCU.
 - Generated data, manifests, schemas, and validation reports must agree on source checksum and instance identifiers/checksums.
+- Do not commit the full generated pilot payload to Git until the representative 1000-task/S03 sizing gate has been reviewed and a durable storage strategy is explicitly chosen.
 
 ## Implementation stack and verification
 - Generator runtime: Python 3.11 or newer.
@@ -36,25 +41,29 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Reproduce and validate it with `python -m validation.cli pilot-selection --manifest manifests/pilot-selection-v1.json --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json`.
 - Run one frozen calibration with `python -m generator.cli calibrate-instance --config config/benchmark-v1.yaml --base-instance <base-instance.json> --output <calibration-result.json>`.
 - Validate calibration schedules against the exact base instance with `python -m validation.cli calibration-result --result <calibration-result.json> --base-instance <base-instance.json>`.
+- Materialize the exact selected pilot with `python -m generator.cli materialize-pilot --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --pilot-selection manifests/pilot-selection-v1.json --source-root source_workflows --output-root <pilot-root> --manifest <pilot-manifest.json> --generator-commit-sha <40-char-sha>`.
+- Fully validate the materialized pilot with `python -m validation.cli pilot-materialization --manifest <pilot-manifest.json> --dataset-root <pilot-root> --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --pilot-selection manifests/pilot-selection-v1.json --source-root source_workflows`.
 - Invoke the generator CLI with `python -m generator.cli`.
 - Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
 - Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.
 - `generator.schedule` is the authoritative v1 scheduling boundary: algorithms provide a complete topological task order and task-to-resource mapping to `build_schedule`, while imported/explicit schedules must pass `validation.validate_schedule` against their base instance. Task intervals are half-open, resources are serial, insertion into safe idle gaps is allowed, and all totals/feasibility/identity fields are recomputed with exact integers.
 - `generator.reference_schedulers` owns the frozen HEFT-IFC, PEFT-IFC, CPOP-IFC, economical-reference, MOHEFT, calibration-anchor, candidate-checksum, and diagnostic lower-bound implementation. Keep algorithm-specific policy out of `generator.schedule`.
+- `generator.materialize` owns selected-pilot grouping, exact deadline/budget construction, joint-witness selection, staged writes, and the pilot materialization manifest. `validation.materialization` owns cross-artifact reproduction and witness verification.
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*` and `validation*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
+- The `pilot-materialization` workflow measures a real 1000-task/S03 base and calibration artifact before a generated-payload storage decision is made.
 - The source-acquisition workflow compiles the pinned upstream Bharathi generator and smoke-tests exact 60-task acquisition for all five families, every configured Genome target, plus the observed SIPHT-600 and LIGO-1000 boundary cases, on relevant PRs. After acquisition changes reach `main`, it generates all 105 source DAX artifacts and pushes them to a new `generated/source-workflows-v1-<main-sha>` branch for review; it must never overwrite an existing generated branch.
 
 ## Planned structure
 - `docs/` - benchmark specification and methodology.
 - `config/` - committed generation/scenario configuration.
 - `source_workflows/` - immutable raw DAX source artifacts and source manifest.
-- `generator/` - deterministic IFC normalizer, generator, and calibration utilities.
+- `generator/` - deterministic IFC normalizer, generator, calibration, and pilot materialization utilities.
 - `schemas/` - machine-readable schemas.
-- `validation/` - source, structural, semantic, reference, and freeze validators.
+- `validation/` - source, structural, semantic, reference, materialization, and freeze validators.
 - `datasets/` - generated candidate/frozen benchmark instances.
-- `manifests/` - source and instance indexes, provenance, checksums, and version metadata.
+- `manifests/` - source, selection, materialization, and instance provenance/checksums.
 - `tests/` - generator/calibration/validator tests and small non-benchmark fixtures.
 
 ## Workflow
