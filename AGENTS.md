@@ -18,6 +18,11 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - The pilot selector enumerates all 2,835 candidate identities without materializing them, then freezes exactly 200 inputs using selector version 1 and seed `20260905`; scheduler outcomes must never influence selection.
 - The pilot split is exactly 160 development and 40 holdout inputs. Holdout comparative outcomes remain unopened until the proposed mechanism and parameters are frozen.
 - V1 deadlines use exact interpolation between best-known feasible fast and economical IFC calibration anchors (`1/10`, `1/2`, `9/10`), not a multiplier of HEFT makespan.
+- The frozen calibration portfolio is `deterministic_heft_ifc`, `deterministic_peft_ifc`, `deterministic_cpop_ifc`, `deterministic_cost_reference_ifc`, plus `deterministic_moheft` with `K = 50`; the implementation version is `ifc_v1`.
+- Reference schedulers may choose task priority and resource mapping only. Final timing, contention, communication, cost, energy, identity, and feasibility must be produced/rechecked by `generator.schedule`.
+- HEFT/CPOP rank communication averages use all ordered distinct-resource pairs; PEFT OCT uses the actual materialized source/target IFC route; deterministic ties are frozen in `docs/REFERENCE_SCHEDULERS.md` and must not drift silently.
+- MOHEFT primary objectives are makespan and exact compute cost. Its nondominated ranking and crowding calculations must remain deterministic and must not use binary floating point.
+- Distinct reference scheduler IDs may legitimately produce the same canonical schedule; do not reject reference convergence. Stored MOHEFT candidates must be unique and must not duplicate an explicit reference output.
 - Every core v1 joint deadline-budget instance must have a validated stored/reproducible feasibility witness satisfying both constraints.
 - Exact normalized cost and budget fields must use integer or exact-decimal arithmetic; binary floating point is not permitted for authoritative cost/budget values.
 - Authoritative units are explicit: execution time in microseconds, compute energy in nanojoules, network energy in picojoules, normalized cost/budget in integer nCU.
@@ -29,10 +34,13 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Run the repository test gate with `python -m pytest`.
 - Generate the frozen pilot selection with `python -m generator.cli select-pilot --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --output manifests/pilot-selection-v1.json`.
 - Reproduce and validate it with `python -m validation.cli pilot-selection --manifest manifests/pilot-selection-v1.json --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json`.
+- Run one frozen calibration with `python -m generator.cli calibrate-instance --config config/benchmark-v1.yaml --base-instance <base-instance.json> --output <calibration-result.json>`.
+- Validate calibration schedules against the exact base instance with `python -m validation.cli calibration-result --result <calibration-result.json> --base-instance <base-instance.json>`.
 - Invoke the generator CLI with `python -m generator.cli`.
 - Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
 - Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.
 - `generator.schedule` is the authoritative v1 scheduling boundary: algorithms provide a complete topological task order and task-to-resource mapping to `build_schedule`, while imported/explicit schedules must pass `validation.validate_schedule` against their base instance. Task intervals are half-open, resources are serial, insertion into safe idle gaps is allowed, and all totals/feasibility/identity fields are recomputed with exact integers.
+- `generator.reference_schedulers` owns the frozen HEFT-IFC, PEFT-IFC, CPOP-IFC, economical-reference, MOHEFT, calibration-anchor, candidate-checksum, and diagnostic lower-bound implementation. Keep algorithm-specific policy out of `generator.schedule`.
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*` and `validation*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.
