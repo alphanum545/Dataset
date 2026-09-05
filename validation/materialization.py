@@ -15,11 +15,11 @@ from generator.materialize import (
     selected_base_instance_id,
 )
 
+from .base_instance import validate_base_instance
 from .calibration import validate_calibration_result_against_instance
 from .errors import BenchmarkValidationError
 from .schema import validate_schema
 from .semantic import (
-    validate_base_instance,
     validate_pilot_selection,
     validate_qos_instance,
     validate_schedule,
