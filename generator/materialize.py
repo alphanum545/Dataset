@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from hashlib import sha256
 import json
 from pathlib import Path, PurePosixPath
@@ -271,20 +271,26 @@ def materialize_pilot_dataset(
     )
     source_root_path = Path(source_root)
     workflow_cache: dict[tuple[str, str, int, str, str], dict[str, Any]] = {}
-    base_cache: dict[str, dict[str, Any]] = {}
-    calibration_cache: dict[str, dict[str, Any]] = {}
+    selected_by_base: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for selected in entries:
+        selected_by_base[selected_base_instance_id(selected, config)].append(selected)
     base_entries: list[dict[str, Any]] = []
     calibration_entries: list[dict[str, Any]] = []
     instance_entries: list[dict[str, Any]] = []
 
     try:
-        for selected in entries:
+        for base_identifier in sorted(selected_by_base):
+            selected_group = sorted(
+                selected_by_base[base_identifier],
+                key=lambda item: (str(item["split"]), str(item["candidate_id"])),
+            )
+            representative = selected_group[0]
             source_key = (
-                str(selected["source_path"]),
-                str(selected["family"]),
-                int(selected["target_task_count"]),
-                str(selected["replicate_id"]),
-                str(selected["source_sha256"]),
+                str(representative["source_path"]),
+                str(representative["family"]),
+                int(representative["target_task_count"]),
+                str(representative["replicate_id"]),
+                str(representative["source_sha256"]),
             )
             workflow = workflow_cache.get(source_key)
             if workflow is None:
@@ -308,80 +314,73 @@ def materialize_pilot_dataset(
                 )
                 workflow_cache[source_key] = workflow
 
-            base_identifier = selected_base_instance_id(selected, config)
-            base = base_cache.get(base_identifier)
-            calibration = calibration_cache.get(base_identifier)
-            if base is None or calibration is None:
-                base = build_base_instance(
-                    workflow,
-                    dict(config),
-                    scale=str(selected["resource_scale"]),
-                    scenario=str(selected["scenario_profile"]),
-                    seed=int(selected["ifc_realization_seed"]),
-                )
-                if base["metadata"]["base_instance_id"] != base_identifier:
-                    raise PilotMaterializationError(
-                        "materialized base instance identity does not match pilot selection"
-                    )
-                calibration = build_calibration_result(
-                    base, k=int(config["budget"]["calibration"]["tradeoff_solutions"])
-                )
-                base_cache[base_identifier] = base
-                calibration_cache[base_identifier] = calibration
-
-                base_path = PurePosixPath("base") / f"{base_identifier}.json"
-                base_digest = _write_json(staging / Path(*base_path.parts), base)
-                base_entries.append(
-                    {
-                        "base_instance_id": base_identifier,
-                        "path": base_path.as_posix(),
-                        "sha256": base_digest,
-                    }
-                )
-                calibration_path = (
-                    PurePosixPath("calibration") / f"{base_identifier}.json"
-                )
-                calibration_digest = _write_json(
-                    staging / Path(*calibration_path.parts), calibration
-                )
-                calibration_entries.append(
-                    {
-                        "base_instance_id": base_identifier,
-                        "path": calibration_path.as_posix(),
-                        "sha256": calibration_digest,
-                        "candidate_set_sha256": str(
-                            calibration["candidate_set_sha256"]
-                        ),
-                    }
-                )
-
-            instance = build_qos_instance(selected, calibration, config)
-            split = str(selected["split"])
-            candidate_id = str(selected["candidate_id"])
-            instance_path = (
-                PurePosixPath("instances") / split / f"{candidate_id}.json"
+            base = build_base_instance(
+                workflow,
+                dict(config),
+                scale=str(representative["resource_scale"]),
+                scenario=str(representative["scenario_profile"]),
+                seed=int(representative["ifc_realization_seed"]),
             )
-            instance_digest = _write_json(
-                staging / Path(*instance_path.parts), instance
+            if base["metadata"]["base_instance_id"] != base_identifier:
+                raise PilotMaterializationError(
+                    "materialized base instance identity does not match pilot selection"
+                )
+            calibration = build_calibration_result(
+                base, k=int(config["budget"]["calibration"]["tradeoff_solutions"])
             )
-            instance_entries.append(
+
+            base_path = PurePosixPath("base") / f"{base_identifier}.json"
+            base_digest = _write_json(staging / Path(*base_path.parts), base)
+            base_entries.append(
                 {
-                    "instance_id": candidate_id,
-                    "candidate_id": candidate_id,
                     "base_instance_id": base_identifier,
-                    "split": split,
-                    "path": instance_path.as_posix(),
-                    "sha256": instance_digest,
-                    "family": str(selected["family"]),
-                    "target_task_count": int(selected["target_task_count"]),
-                    "replicate_id": str(selected["replicate_id"]),
-                    "source_sha256": str(selected["source_sha256"]),
-                    "resource_scale": str(selected["resource_scale"]),
-                    "scenario_profile": str(selected["scenario_profile"]),
-                    "qos_profile": str(selected["qos_profile"]),
-                    "ifc_realization_seed": int(selected["ifc_realization_seed"]),
+                    "path": base_path.as_posix(),
+                    "sha256": base_digest,
                 }
             )
+            calibration_path = (
+                PurePosixPath("calibration") / f"{base_identifier}.json"
+            )
+            calibration_digest = _write_json(
+                staging / Path(*calibration_path.parts), calibration
+            )
+            calibration_entries.append(
+                {
+                    "base_instance_id": base_identifier,
+                    "path": calibration_path.as_posix(),
+                    "sha256": calibration_digest,
+                    "candidate_set_sha256": str(calibration["candidate_set_sha256"]),
+                }
+            )
+
+            for selected in selected_group:
+                instance = build_qos_instance(selected, calibration, config)
+                split = str(selected["split"])
+                candidate_id = str(selected["candidate_id"])
+                instance_path = (
+                    PurePosixPath("instances") / split / f"{candidate_id}.json"
+                )
+                instance_digest = _write_json(
+                    staging / Path(*instance_path.parts), instance
+                )
+                instance_entries.append(
+                    {
+                        "instance_id": candidate_id,
+                        "candidate_id": candidate_id,
+                        "base_instance_id": base_identifier,
+                        "split": split,
+                        "path": instance_path.as_posix(),
+                        "sha256": instance_digest,
+                        "family": str(selected["family"]),
+                        "target_task_count": int(selected["target_task_count"]),
+                        "replicate_id": str(selected["replicate_id"]),
+                        "source_sha256": str(selected["source_sha256"]),
+                        "resource_scale": str(selected["resource_scale"]),
+                        "scenario_profile": str(selected["scenario_profile"]),
+                        "qos_profile": str(selected["qos_profile"]),
+                        "ifc_realization_seed": int(selected["ifc_realization_seed"]),
+                    }
+                )
 
         base_entries.sort(key=lambda item: item["base_instance_id"])
         calibration_entries.sort(key=lambda item: item["base_instance_id"])
