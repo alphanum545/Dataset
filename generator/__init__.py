@@ -5,6 +5,13 @@ from .dax import DaxValidationError, normalize_dax
 from .identity import base_instance_id, workflow_id
 from .network import build_network, route_metrics
 from .resources import build_resources
+from .schedule import (
+    ScheduleEvaluation,
+    ScheduleEvaluationError,
+    build_schedule,
+    canonical_schedule_id,
+    evaluate_schedule,
+)
 
 __all__ = [
     "DaxValidationError",
@@ -16,4 +23,9 @@ __all__ = [
     "build_network",
     "route_metrics",
     "build_resources",
+    "ScheduleEvaluation",
+    "ScheduleEvaluationError",
+    "build_schedule",
+    "canonical_schedule_id",
+    "evaluate_schedule",
 ]
