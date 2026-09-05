@@ -42,6 +42,40 @@ jobs:
           cache: pip
       - name: Install generator
         run: python -m pip install -e '.[test]'
+      - name: Check development and holdout base isolation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from generator.config import load_config
+          from generator.materialize import selected_base_instance_id
+
+          config = load_config(Path('config/benchmark-v1.yaml'))
+          selection = json.loads(
+              Path('manifests/pilot-selection-v1.json').read_text(encoding='utf-8')
+          )
+          development = set()
+          holdout = set()
+          for entry in selection['entries']:
+              base_id = selected_base_instance_id(entry, config)
+              if entry['split'] == 'development':
+                  development.add(base_id)
+              elif entry['split'] == 'holdout':
+                  holdout.add(base_id)
+              else:
+                  raise SystemExit(f"unknown split: {entry['split']!r}")
+          overlap = sorted(development & holdout)
+          print(json.dumps({
+              'development_base_count': len(development),
+              'holdout_base_count': len(holdout),
+              'cross_split_base_overlap_count': len(overlap),
+          }, sort_keys=True))
+          if overlap:
+              raise SystemExit(
+                  'holdout isolation failed: development and holdout share base realizations'
+              )
+          PY
       - name: Materialize exact frozen 200-input pilot
         run: |
           /usr/bin/time -v -o "$RUNNER_TEMP/materialization-time.txt" \
