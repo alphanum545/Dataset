@@ -31,6 +31,19 @@ For each distinct selected base realization:
 
 The implementation processes one base group at a time so memory usage is bounded by the current base, calibration population, and associated QoS outputs rather than the complete 200-input pilot.
 
+## Compact communication representation
+
+The base instance stores the information that defines communication rather than a redundant dependency-by-resource-pair expansion:
+
+- each dependency stores its authoritative `data_bits`;
+- each resource stores its tier;
+- the base stores the scenario-adjusted network segments and frozen route definitions;
+- `generator.network.resource_route_metrics(...)` derives the exact transfer time and network energy for a concrete source/target resource pair.
+
+`generator.schedule` and every frozen reference scheduler use this same derivation boundary. Same-resource communication remains exactly zero. Different resources in the same tier and cross-tier placements use the same frozen routes and exact integer formulas as before.
+
+This is a representation change, not a scheduling-model change. Before the benchmark is frozen, the originally expanded `edge × source-resource × target-resource` matrix was removed because every stored value was deterministically reconstructible from the compact authoritative inputs.
+
 ## Deadline materialization
 
 For profile fraction `alpha = p/q`:
@@ -132,17 +145,35 @@ python -m validation.cli pilot-materialization \
   --source-root source_workflows
 ```
 
-## Storage decision gate
+## Observed large-instance sizing gate
 
-The full generated pilot is not automatically committed to Git. The base instance representation contains a route-specific communication entry for every dependency and resource pair, and large S03 realizations can therefore be substantial.
+The storage/memory risk was measured on the real frozen Montage 1000-task source with S03, balanced networking, and IFC seed 101.
 
-Before selecting permanent storage, the repository runs a representative real 1000-task/S03 sizing smoke and records:
+The first measurement exposed the redundant expanded communication matrix. After replacing it with the compact derivation boundary, the same case produced:
 
-- raw base-instance size;
-- compressed base-instance size;
-- raw calibration-artifact size;
-- compressed calibration-artifact size;
-- peak resident memory;
-- runtime for base construction and calibration.
+| Measure | Expanded representation | Compact representation |
+| --- | ---: | ---: |
+| Base JSON raw bytes | 363,028,528 | 3,630,983 |
+| Base JSON gzip bytes | 13,497,787 | 245,296 |
+| Base-build peak RSS | 2,195,180 kB | 43,732 kB |
+| Base-build wall time | about 15.00 s | 0.27 s |
+| Calibration JSON raw bytes | 4,673,429 | 4,673,429 |
+| Calibration JSON gzip bytes | 677,064 | 677,064 |
+| Calibration peak RSS | about 1,505,600 kB | 84,028 kB |
+| Calibration wall time | about 55.69 s | 85.02 s |
 
-The storage decision must be based on these observed values. The checksummed materialization manifest remains the authoritative provenance index regardless of whether payload files are ultimately stored in Git or another durable artifact store.
+The compact representation therefore removes roughly two orders of magnitude of base-instance storage and memory while preserving the same validated 54-schedule calibration candidate set. The extra calibration CPU time is accepted at the pilot stage because it avoids storing or retaining the full `E × R²` expansion and keeps the authoritative representation small.
+
+## Full-pilot storage gate
+
+The compact representative base is small enough that Git storage is plausible, but the complete 200-input payload is not committed merely from a single-case extrapolation.
+
+The `full-pilot-materialization` workflow now:
+
+1. materializes exactly the frozen 200 entries from the exact generator head;
+2. fully validates every source/base/calibration/QoS/witness relationship;
+3. reports the number of distinct base realizations, development/holdout counts, deadline/budget degeneracy counts, and raw payload size;
+4. creates a compressed archive to measure total compressed size;
+5. publishes a short-retention review artifact.
+
+Permanent payload storage is chosen only after this complete observed size is reviewed. The checksummed materialization manifest remains the authoritative provenance index regardless of the eventual payload storage location.
