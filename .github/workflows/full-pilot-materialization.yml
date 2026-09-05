@@ -82,6 +82,8 @@ jobs:
           budget_degenerate = 0
           time_gaps = []
           budget_widths = []
+          development_bases = set()
+          holdout_bases = set()
           for entry in manifest['entries']:
               instance = json.loads((pilot / entry['path']).read_text(encoding='utf-8'))
               deadline = instance['deadline']
@@ -90,7 +92,12 @@ jobs:
               budget_degenerate += int(budget['budget_range_degenerate'])
               time_gaps.append(deadline['time_gap_us'])
               budget_widths.append(budget['cost_fast_ncu'] - budget['cost_floor_ref_ncu'])
+              if entry['split'] == 'development':
+                  development_bases.add(entry['base_instance_id'])
+              else:
+                  holdout_bases.add(entry['base_instance_id'])
 
+          overlap = development_bases & holdout_bases
           raw_bytes = sum(path.stat().st_size for path in pilot.rglob('*') if path.is_file())
           raw_bytes += manifest_path.stat().st_size
           print(json.dumps({
@@ -98,6 +105,9 @@ jobs:
               'calibration_count': manifest['calibration_count'],
               'instance_count': manifest['instance_count'],
               'split_counts': manifest['split_counts'],
+              'development_base_count': len(development_bases),
+              'holdout_base_count': len(holdout_bases),
+              'cross_split_base_overlap_count': len(overlap),
               'deadline_degenerate_count': deadline_degenerate,
               'budget_degenerate_count': budget_degenerate,
               'min_time_gap_us': min(time_gaps),
