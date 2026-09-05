@@ -42,22 +42,20 @@ The scale is a representation choice, not a claim that the benchmark uses a real
 
 ## Calibration schedules
 
-For each workflow/resource/scenario/seed realization, compute the following schedules before materializing the three QoS profiles.
+For each selected workflow/resource/scenario/seed realization, compute the frozen reference portfolio and MOHEFT calibration schedules before materializing the three QoS profiles.
 
 ### 1. Time-oriented endpoint
 
-`S_time = deterministic HEFT`
+`S_fast` is the minimum-makespan schedule in the validated calibration set. The set includes deterministic HEFT-IFC, PEFT-IFC, CPOP-IFC, the cost-oriented reference, and retained deterministic MOHEFT schedules.
 
 Store:
 
-- `T_time` — HEFT makespan;
-- `C_time` — HEFT exact schedule cost.
-
-`T_time` is also the v1 deadline reference `T_ref`.
+- `T_fast` — best-known feasible calibration makespan;
+- `C_fast` — exact cost of that schedule.
 
 ### 2. Cost-oriented endpoint
 
-`S_cheapest` maps each task to its cheapest eligible resource under the canonical cost model and then builds a precedence/resource-valid deterministic schedule. It provides a global cost-oriented endpoint, but it is **not automatically assumed to satisfy a deadline**.
+`S_economical` is the minimum-exact-cost schedule in the same calibration set, with lower makespan and canonical schedule ID as deterministic tie-breakers. It provides `T_economical`, the other deadline-envelope endpoint, but it is **not automatically assumed to satisfy a tighter interpolated deadline**.
 
 ### 3. Cost–makespan calibration frontier
 
@@ -72,7 +70,7 @@ Run a deterministic MOHEFT calibration pass with:
 
 The calibration candidate set is:
 
-`P_cal = MOHEFT_schedules ∪ {S_time, S_cheapest}`
+`P_cal = MOHEFT_schedules ∪ {HEFT-IFC, PEFT-IFC, CPOP-IFC, cost-reference-IFC}`
 
 The explicit endpoints are retained even if pruning would otherwise remove them.
 
@@ -84,7 +82,7 @@ For a stored deadline `D`, define:
 
 `F(D) = { S in P_cal | makespan(S) <= D }`
 
-Because every v1 deadline is at least `1.25 × T_time`, `S_time` belongs to `F(D)`. Therefore `F(D)` must never be empty if the calibration data are internally consistent.
+Because every v1 deadline lies at or above `T_fast`, `S_fast` belongs to `F(D)`. Therefore `F(D)` must never be empty if the calibration data are internally consistent.
 
 Define:
 
@@ -98,19 +96,19 @@ Important: `C_floor_ref(D)` is the cheapest cost found by the frozen calibration
 
 ## Budget range
 
-The upper calibration endpoint is the HEFT schedule cost:
+The upper calibration endpoint is the fast-anchor schedule cost:
 
-`C_ceiling_ref(D) = C_time`
+`C_ceiling_ref(D) = C_fast`
 
-Since `S_time` meets every v1 deadline, this is also a known-feasible endpoint.
+Since `S_fast` meets every v1 deadline, this is also a known-feasible endpoint.
 
 By construction:
 
-`C_floor_ref(D) <= C_time`
+`C_floor_ref(D) <= C_fast`
 
 For budget-gap fraction `beta = p/q`, compute using exact integer arithmetic:
 
-`B(D,beta) = C_floor_ref(D) + floor(p × (C_time - C_floor_ref(D)) / q)`
+`B(D,beta) = C_floor_ref(D) + floor(p × (C_fast - C_floor_ref(D)) / q)`
 
 No floating-point calculation is permitted when materializing the budget.
 
@@ -118,11 +116,11 @@ No floating-point calculation is permitted when materializing the budget.
 
 The benchmark deliberately uses **three paired joint-constraint profiles**, not a 3×3 deadline-budget Cartesian product. This keeps the primary benchmark at the already planned scale while moving from deadline-only to genuine deadline-and-budget evaluation.
 
-| Profile | Deadline factor | Budget-gap fraction | Meaning |
+| Profile | Deadline-envelope fraction | Budget-gap fraction | Meaning |
 | --- | ---: | ---: | --- |
-| `tight` | `5/4 = 1.25` | `1/10 = 0.10` | deadline close to HEFT and budget close to the cheapest known schedule that still meets that deadline |
-| `moderate` | `3/2 = 1.50` | `1/2 = 0.50` | balanced joint slack |
-| `relaxed` | `2/1 = 2.00` | `9/10 = 0.90` | broad time and cost slack while retaining a nontrivial budget ceiling |
+| `tight` | `1/10 = 0.10` | `1/10 = 0.10` | deadline close to the fastest known feasible schedule and budget close to the least-cost deadline-feasible schedule |
+| `moderate` | `1/2 = 0.50` | `1/2 = 0.50` | midpoint time and cost slack |
+| `relaxed` | `9/10 = 0.90` | `9/10 = 0.90` | deadline close to the economical anchor with broad budget slack |
 
 Thus one base workflow/infrastructure realization still produces exactly three primary scheduling instances.
 
@@ -154,7 +152,7 @@ It does not prove that all algorithms can find a feasible schedule. It only prov
 
 If:
 
-`C_floor_ref(D) = C_time`
+`C_floor_ref(D) = C_fast`
 
 then the known feasible budget range has zero width. The instance is still valid, but the generator must set:
 
@@ -168,7 +166,7 @@ Aggregate validation must report how often this occurs. A high degenerate rate m
 
 The proposed novel algorithm must never participate in calibration.
 
-The calibration implementations and versions are frozen before the proposed method is tuned. The manifest records HEFT and MOHEFT calibration versions, `K`, tie-breaking rules, and schedule checksums.
+The calibration implementations and versions are frozen before the proposed method is tuned. The manifest records every reference scheduler and MOHEFT version, `K`, tie-breaking rules, and schedule checksums.
 
 If the exact MOHEFT calibration implementation is later included among the seven primary algorithms, the dependency must be explicitly disclosed because it contributed to constraint construction. Preferably, the calibration implementation should remain a benchmark-construction utility rather than a primary success-rate baseline.
 
@@ -176,10 +174,10 @@ If the exact MOHEFT calibration implementation is later included among the seven
 
 Each instance/manifest must store at least:
 
-- `t_ref_us`;
-- `deadline_factor_num`, `deadline_factor_den`;
+- `t_fast_us`, `t_economical_us`, and `time_gap_us`;
+- `deadline_interpolation_num`, `deadline_interpolation_den`;
 - `deadline_us`;
-- `cost_time_ncu` (`C_time`);
+- `cost_fast_ncu` (`C_fast`);
 - `cost_floor_ref_ncu` (`C_floor_ref(D)`);
 - `budget_gap_ncu`;
 - `budget_factor_num`, `budget_factor_den`;
@@ -195,7 +193,7 @@ Useful diagnostics include:
 
 - `deadline_lb_ratio`;
 - `budget_floor_ratio = budget_ncu / max(cost_floor_ref_ncu, 1)` for reporting only;
-- `cost_tradeoff_width_ncu = cost_time_ncu - cost_floor_ref_ncu`.
+- `cost_tradeoff_width_ncu = cost_fast_ncu - cost_floor_ref_ncu`.
 
 Diagnostic ratios may be computed in analysis using decimal arithmetic; the frozen budget itself remains integer-exact.
 
@@ -206,10 +204,10 @@ For every materialized joint-QoS instance:
 1. exact cost fields are integers and nonnegative;
 2. `deadline_us` is positive;
 3. `F(D)` is nonempty;
-4. `S_time` is precedence/resource valid and meets `D`;
+4. `S_fast` is precedence/resource valid and meets `D`;
 5. `S_floor(D)` is precedence/resource valid and meets `D`;
 6. stored witness cost equals `C_floor_ref(D)` exactly;
-7. `C_floor_ref(D) <= budget_ncu <= C_time`;
+7. `C_floor_ref(D) <= budget_ncu <= C_fast`;
 8. budget is reproduced exactly from the stored rational factor;
 9. witness cost is `<= budget_ncu`;
 10. witness makespan is `<= deadline_us`;
@@ -220,7 +218,7 @@ For every materialized joint-QoS instance:
 ## What this strategy does not claim
 
 - `C_floor_ref(D)` is not the globally optimal cost under deadline `D`.
-- HEFT is not the optimal makespan scheduler.
+- `S_fast` is not asserted to be the globally optimal makespan schedule.
 - MOHEFT's retained set is not asserted to be the exact Pareto frontier.
 - a known feasible benchmark does not guarantee that any particular scheduler succeeds.
 

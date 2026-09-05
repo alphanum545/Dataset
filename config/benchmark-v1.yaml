@@ -218,21 +218,103 @@ cost_model:
   resource_price_field: price_ncu_per_second
   task_cost_rounding: ceil
 
+pilot_selection:
+  selection_id: pilot-selection-v1
+  selector_id: deterministic-stratified-pairwise
+  selector_version: 1
+  seed: 20260905
+  candidate_universe_count: 2835
+  selected_count: 200
+  split_counts:
+    development: 160
+    holdout: 40
+  marginal_targets:
+    family:
+      montage: 40
+      cybershake: 40
+      ligo: 40
+      sipht: 40
+      genome: 40
+    target_task_count:
+      60: 29
+      100: 29
+      200: 29
+      400: 29
+      600: 28
+      800: 28
+      1000: 28
+    replicate_id:
+      r01: 67
+      r02: 67
+      r03: 66
+    resource_scale:
+      S01: 67
+      S02: 66
+      S03: 67
+    scenario_profile:
+      balanced: 66
+      compute_constrained: 67
+      network_constrained: 67
+    qos_profile:
+      tight: 67
+      moderate: 66
+      relaxed: 67
+  holdout_marginal_targets:
+    family:
+      montage: 8
+      cybershake: 8
+      ligo: 8
+      sipht: 8
+      genome: 8
+    target_task_count:
+      60: 6
+      100: 5
+      200: 6
+      400: 5
+      600: 6
+      800: 6
+      1000: 6
+    replicate_id:
+      r01: 14
+      r02: 13
+      r03: 13
+    resource_scale:
+      S01: 13
+      S02: 14
+      S03: 13
+    scenario_profile:
+      balanced: 13
+      compute_constrained: 13
+      network_constrained: 14
+    qos_profile:
+      tight: 13
+      moderate: 14
+      relaxed: 13
+
 reference_makespan:
   lower_bound_components:
     - optimistic_critical_path
     - aggregate_capacity
-  calibration_scheduler: deterministic_heft
-  deadline_factors:
+  strategy: feasible_time_cost_envelope
+  calibration_schedulers:
+    time_oriented:
+      - deterministic_heft_ifc
+      - deterministic_peft_ifc
+      - deterministic_cpop_ifc
+    cost_oriented: deterministic_cost_reference_ifc
+  time_anchor: minimum_validated_calibration_makespan
+  economical_anchor: makespan_of_lowest_known_cost_calibration_schedule
+  proposed_algorithm_excluded: true
+  deadline_interpolation_fractions:
     tight:
-      numerator: 5
-      denominator: 4
+      numerator: 1
+      denominator: 10
     moderate:
-      numerator: 3
+      numerator: 1
       denominator: 2
     relaxed:
-      numerator: 2
-      denominator: 1
+      numerator: 9
+      denominator: 10
   deadline_rounding: ceil
 
 budget:
@@ -245,8 +327,10 @@ budget:
       - makespan
       - compute_cost
     explicit_endpoints:
-      - deterministic_heft
-      - cheapest_resource_assignment
+      - deterministic_heft_ifc
+      - deterministic_peft_ifc
+      - deterministic_cpop_ifc
+      - deterministic_cost_reference_ifc
     deterministic_tie_breaking: true
   joint_qos_profiles:
     tight:

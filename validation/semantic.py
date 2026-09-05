@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from decimal import Decimal
 from hashlib import sha256
+from itertools import combinations
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Iterable
 
@@ -37,10 +38,16 @@ _EXPECTED_SEGMENTS = {
     "fog_cloud_backbone",
     "cloud_lan",
 }
-_DEADLINE_FACTORS = {
-    "tight": (5, 4),
-    "moderate": (3, 2),
-    "relaxed": (2, 1),
+_DEADLINE_INTERPOLATION_FRACTIONS = {
+    "tight": (1, 10),
+    "moderate": (1, 2),
+    "relaxed": (9, 10),
+}
+_REFERENCE_SCHEDULERS = {
+    "deterministic_heft_ifc",
+    "deterministic_peft_ifc",
+    "deterministic_cpop_ifc",
+    "deterministic_cost_reference_ifc",
 }
 _BUDGET_FACTORS = {
     "tight": (1, 10),
@@ -389,6 +396,114 @@ def validate_source_manifest(
                 _fail(f"source artifact checksum mismatch for {entry['path']!r}")
 
 
+def validate_pilot_selection(
+    manifest: dict[str, Any],
+    *,
+    config: dict[str, Any] | None = None,
+    source_manifest: dict[str, Any] | None = None,
+) -> None:
+    """Validate the frozen pilot selection and optionally reproduce it exactly."""
+    validate_schema(manifest, "pilot-selection")
+    entries = manifest["entries"]
+    if manifest["selected_count"] != len(entries):
+        _fail("pilot selected_count does not equal entries length")
+    _unique(entries, "candidate_id", "pilot candidate IDs")
+
+    dimensions = (
+        "family",
+        "target_task_count",
+        "replicate_id",
+        "resource_scale",
+        "scenario_profile",
+        "qos_profile",
+    )
+    signatures = [tuple(entry[key] for key in dimensions) for entry in entries]
+    if len(signatures) != len(set(signatures)):
+        _fail("pilot candidate dimension tuples must be unique")
+    expected_order = sorted(
+        entries,
+        key=lambda entry: (
+            entry["split"],
+            *(entry[key] for key in dimensions),
+        ),
+    )
+    if entries != expected_order:
+        _fail("pilot entries do not use canonical split/dimension ordering")
+
+    split_counts = Counter(entry["split"] for entry in entries)
+    if dict(split_counts) != manifest["split_counts"]:
+        _fail("pilot split_counts do not match entries")
+    for entry in entries:
+        _validate_relative_posix_path(entry["source_path"], label="pilot source path")
+
+    def marginals(items: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+        return {
+            dimension: {
+                str(value): count
+                for value, count in sorted(
+                    Counter(item[dimension] for item in items).items(),
+                    key=lambda pair: str(pair[0]),
+                )
+            }
+            for dimension in dimensions
+        }
+
+    def pairwise_coverage(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "dimensions": [left, right],
+                "observed_pairs": len(
+                    {(item[left], item[right]) for item in items}
+                ),
+                "possible_pairs": len({item[left] for item in items})
+                * len({item[right] for item in items}),
+            }
+            for left, right in combinations(dimensions, 2)
+        ]
+
+    development = [entry for entry in entries if entry["split"] == "development"]
+    holdout = [entry for entry in entries if entry["split"] == "holdout"]
+    coverage = manifest["coverage"]
+    if coverage["overall_marginals"] != marginals(entries):
+        _fail("pilot overall marginal counts are inconsistent")
+    if coverage["development_marginals"] != marginals(development):
+        _fail("pilot development marginal counts are inconsistent")
+    if coverage["holdout_marginals"] != marginals(holdout):
+        _fail("pilot holdout marginal counts are inconsistent")
+    if coverage["overall_pairwise"] != pairwise_coverage(entries):
+        _fail("pilot overall pairwise coverage is inconsistent")
+    if coverage["holdout_pairwise"] != pairwise_coverage(holdout):
+        _fail("pilot holdout pairwise coverage is inconsistent")
+    if any(
+        item["observed_pairs"] != item["possible_pairs"]
+        for key in ("overall_pairwise", "holdout_pairwise")
+        for item in coverage[key]
+    ):
+        _fail("pilot must provide complete overall and holdout pairwise coverage")
+
+    if manifest["content_sha256"] != content_sha256(manifest):
+        _fail("pilot selection content_sha256 does not match canonical content")
+
+    if (config is None) is not (source_manifest is None):
+        _fail("config and source_manifest must be supplied together")
+    if config is not None and source_manifest is not None:
+        from generator.canonical import canonical_json_bytes
+        from generator.pilot import build_pilot_selection_manifest
+
+        validate_source_manifest(source_manifest)
+        if manifest["configuration_sha256"] != sha256(
+            canonical_json_bytes(config)
+        ).hexdigest():
+            _fail("pilot configuration_sha256 does not match the supplied configuration")
+        if manifest["source_manifest_sha256"] != sha256(
+            canonical_json_bytes(source_manifest)
+        ).hexdigest():
+            _fail("pilot source_manifest_sha256 does not match the supplied source manifest")
+        expected = build_pilot_selection_manifest(config, source_manifest)
+        if manifest != expected:
+            _fail("pilot selection does not reproduce from its frozen inputs and seed")
+
+
 def _validate_schedule_shape(schedule: dict[str, Any]) -> None:
     assignments = schedule["assignments"]
     task_ids = _unique(assignments, "task_id", "schedule task assignments")
@@ -437,22 +552,51 @@ def validate_calibration_result(result: dict[str, Any]) -> None:
     lower = result["lower_bounds"]
     if lower["t_lb_us"] != max(lower["t_cp_lb_us"], lower["t_capacity_lb_us"]):
         _fail("t_lb_us must equal max(t_cp_lb_us, t_capacity_lb_us)")
-    if result["heft"]["scheduler_id"] != "deterministic_heft":
-        _fail("HEFT calibration scheduler_id must be deterministic_heft")
-    if result["cheapest_resource_assignment"]["scheduler_id"] != "deterministic_cheapest_resource":
-        _fail("cheapest endpoint scheduler_id must be deterministic_cheapest_resource")
+    references = result["reference_schedulers"]
+    scheduler_ids = _unique(references, "scheduler_id", "reference scheduler IDs")
+    if set(scheduler_ids) != _REFERENCE_SCHEDULERS:
+        _fail("calibration must contain the frozen IFC reference scheduler portfolio")
 
     schedules = [
-        result["heft"]["schedule"],
-        result["cheapest_resource_assignment"]["schedule"],
+        *(reference["schedule"] for reference in references),
         *result["moheft"]["candidate_schedules"],
     ]
     for schedule in schedules:
         _validate_schedule_shape(schedule)
     _unique(schedules, "schedule_id", "calibration schedule IDs")
     _unique(schedules, "schedule_sha256", "calibration schedule checksums")
-    if result["heft"]["schedule"]["makespan_us"] < lower["t_lb_us"]:
-        _fail("HEFT makespan cannot be below the stored lower bound")
+    if any(schedule["makespan_us"] < lower["t_lb_us"] for schedule in schedules):
+        _fail("a calibration makespan cannot be below the stored lower bound")
+
+    fast = min(
+        schedules,
+        key=lambda schedule: (
+            schedule["makespan_us"],
+            schedule["compute_cost_ncu"],
+            schedule["schedule_id"],
+        ),
+    )
+    economical = min(
+        schedules,
+        key=lambda schedule: (
+            schedule["compute_cost_ncu"],
+            schedule["makespan_us"],
+            schedule["schedule_id"],
+        ),
+    )
+    anchors = result["anchors"]
+    expected_anchors = {
+        "fast_schedule_id": fast["schedule_id"],
+        "economical_schedule_id": economical["schedule_id"],
+        "t_fast_us": fast["makespan_us"],
+        "t_economical_us": economical["makespan_us"],
+        "cost_fast_ncu": fast["compute_cost_ncu"],
+        "cost_economical_ncu": economical["compute_cost_ncu"],
+        "deadline_range_degenerate": fast["makespan_us"]
+        == economical["makespan_us"],
+    }
+    if anchors != expected_anchors:
+        _fail("calibration anchors do not match the frozen selection rules")
 
 
 def validate_qos_instance(instance: dict[str, Any]) -> None:
@@ -462,20 +606,35 @@ def validate_qos_instance(instance: dict[str, Any]) -> None:
     budget = instance["budget"]
     witness = instance["joint_feasibility_witness"]
     _validate_schedule_shape(witness)
+    if set(instance["calibration"]["reference_scheduler_versions"]) != _REFERENCE_SCHEDULERS:
+        _fail("QoS calibration versions do not identify the frozen reference portfolio")
 
-    if (deadline["factor_numerator"], deadline["factor_denominator"]) != _DEADLINE_FACTORS[profile]:
-        _fail(f"deadline factor does not match the frozen {profile!r} profile")
-    expected_deadline = mul_ratio_ceil(
-        deadline["t_ref_us"], deadline["factor_numerator"], deadline["factor_denominator"]
+    fraction = (
+        deadline["interpolation_numerator"],
+        deadline["interpolation_denominator"],
+    )
+    if fraction != _DEADLINE_INTERPOLATION_FRACTIONS[profile]:
+        _fail(f"deadline interpolation does not match the frozen {profile!r} profile")
+    if deadline["t_economical_us"] < deadline["t_fast_us"]:
+        _fail("t_economical_us cannot be below t_fast_us")
+    time_gap = deadline["t_economical_us"] - deadline["t_fast_us"]
+    if deadline["time_gap_us"] != time_gap:
+        _fail("time_gap_us does not match the deadline anchors")
+    if deadline["deadline_range_degenerate"] is not (time_gap == 0):
+        _fail("deadline_range_degenerate is inconsistent with the deadline anchors")
+    expected_deadline = deadline["t_fast_us"] + mul_ratio_ceil(
+        time_gap,
+        deadline["interpolation_numerator"],
+        deadline["interpolation_denominator"],
     )
     if deadline["deadline_us"] != expected_deadline:
-        _fail("deadline_us does not reconstruct from t_ref_us and its rational factor")
+        _fail("deadline_us does not reconstruct from the exact envelope interpolation")
 
     if (budget["factor_numerator"], budget["factor_denominator"]) != _BUDGET_FACTORS[profile]:
         _fail(f"budget factor does not match the frozen {profile!r} profile")
-    if budget["cost_floor_ref_ncu"] > budget["cost_time_ncu"]:
-        _fail("cost_floor_ref_ncu cannot exceed cost_time_ncu")
-    tradeoff_width = budget["cost_time_ncu"] - budget["cost_floor_ref_ncu"]
+    if budget["cost_floor_ref_ncu"] > budget["cost_fast_ncu"]:
+        _fail("cost_floor_ref_ncu cannot exceed cost_fast_ncu")
+    tradeoff_width = budget["cost_fast_ncu"] - budget["cost_floor_ref_ncu"]
     expected_budget_gap = mul_ratio_floor(
         tradeoff_width, budget["factor_numerator"], budget["factor_denominator"]
     )

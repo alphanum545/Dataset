@@ -68,6 +68,14 @@ Algorithms consume generated files, not RNGs. Each frozen instance includes the 
 - reference values;
 - deadline/budget values and witness metadata.
 
+## Outcome-independent pilot selection
+
+Before any calibration or competitive result is inspected, enumerate all 2,835 candidate identities and select the committed 200-input pilot with selector version 1 and seed `20260905`. The selection contains 160 development and 40 holdout inputs.
+
+`manifests/pilot-selection-v1.json` records canonical checksums of the parsed configuration, source manifest, and complete candidate universe together with exact marginal and pairwise coverage. It must reproduce byte-for-byte in canonical JSON from those inputs. Scheduler metrics never participate in selection.
+
+The holdout may be materialized and calibrated to create its input deadlines/budgets, but comparative outcomes remain unopened until the proposed mechanism and parameters are frozen.
+
 ## Source manifest
 
 The raw source-workflow manifest includes at least:
@@ -101,6 +109,8 @@ A dataset-version manifest includes at least:
 - provenance;
 - generation timestamp in UTC outside deterministic content where appropriate;
 - validation status.
+
+The preceding selection manifest is separate: it freezes identities and split membership before artifacts exist, and therefore does not fabricate future artifact paths or checksums.
 
 ## Determinism verification
 

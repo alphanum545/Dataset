@@ -4,6 +4,7 @@ from .canonical import canonical_json_bytes, content_sha256
 from .dax import DaxValidationError, normalize_dax
 from .identity import base_instance_id, workflow_id
 from .network import build_network, route_metrics
+from .pilot import PilotSelectionError, build_pilot_selection_manifest, enumerate_candidates
 from .resources import build_resources
 from .schedule import (
     ScheduleEvaluation,
@@ -21,6 +22,9 @@ __all__ = [
     "workflow_id",
     "base_instance_id",
     "build_network",
+    "PilotSelectionError",
+    "build_pilot_selection_manifest",
+    "enumerate_candidates",
     "route_metrics",
     "build_resources",
     "ScheduleEvaluation",

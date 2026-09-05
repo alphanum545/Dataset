@@ -6,8 +6,10 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
+from generator.config import ConfigError, load_config
+
 from .errors import BenchmarkValidationError
-from .semantic import validate_source_manifest
+from .semantic import validate_pilot_selection, validate_source_manifest
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -26,6 +28,13 @@ def _parser() -> argparse.ArgumentParser:
             "105-artifact grid"
         ),
     )
+    pilot = subparsers.add_parser(
+        "pilot-selection",
+        description="Validate and exactly reproduce a frozen pilot selection",
+    )
+    pilot.add_argument("--manifest", type=Path, required=True)
+    pilot.add_argument("--config", type=Path, required=True)
+    pilot.add_argument("--source-manifest", type=Path, required=True)
     return parser
 
 
@@ -33,19 +42,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        validate_source_manifest(
-            manifest,
-            source_root=args.source_root,
-            require_complete=not args.allow_partial,
-        )
-    except (OSError, json.JSONDecodeError, BenchmarkValidationError) as exc:
+        if args.command == "source-manifest":
+            validate_source_manifest(
+                manifest,
+                source_root=args.source_root,
+                require_complete=not args.allow_partial,
+            )
+            count_key = "artifact_count"
+        else:
+            config = load_config(args.config)
+            source_manifest = json.loads(
+                args.source_manifest.read_text(encoding="utf-8")
+            )
+            validate_pilot_selection(
+                manifest,
+                config=config,
+                source_manifest=source_manifest,
+            )
+            count_key = "selected_count"
+    except (OSError, json.JSONDecodeError, ConfigError, BenchmarkValidationError) as exc:
         print(f"validation failed: {exc}", file=sys.stderr)
         return 1
 
     print(
         json.dumps(
             {
-                "artifact_count": manifest["artifact_count"],
+                count_key: manifest[count_key],
                 "manifest": str(args.manifest),
                 "status": "passed",
             },

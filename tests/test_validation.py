@@ -180,21 +180,42 @@ def test_calibration_schema_and_lower_bound_semantics():
         "base_instance_id": "base-example",
         "calibration_version": "v1",
         "lower_bounds": {"t_cp_lb_us": 10, "t_capacity_lb_us": 8, "t_lb_us": 10},
-        "heft": {
-            "scheduler_id": "deterministic_heft",
-            "scheduler_version": "v1",
-            "schedule": _schedule("heft", makespan=12, cost=100),
-        },
-        "cheapest_resource_assignment": {
-            "scheduler_id": "deterministic_cheapest_resource",
-            "scheduler_version": "v1",
-            "schedule": _schedule("cheapest", makespan=20, cost=40),
-        },
+        "reference_schedulers": [
+            {
+                "scheduler_id": "deterministic_heft_ifc",
+                "scheduler_version": "v1",
+                "schedule": _schedule("heft", makespan=12, cost=100),
+            },
+            {
+                "scheduler_id": "deterministic_peft_ifc",
+                "scheduler_version": "v1",
+                "schedule": _schedule("peft", makespan=11, cost=120),
+            },
+            {
+                "scheduler_id": "deterministic_cpop_ifc",
+                "scheduler_version": "v1",
+                "schedule": _schedule("cpop", makespan=13, cost=90),
+            },
+            {
+                "scheduler_id": "deterministic_cost_reference_ifc",
+                "scheduler_version": "v1",
+                "schedule": _schedule("cheapest", makespan=20, cost=40),
+            },
+        ],
         "moheft": {
             "scheduler_id": "deterministic_moheft",
             "scheduler_version": "v1",
             "k": 50,
             "candidate_schedules": [_schedule("moheft-01", makespan=14, cost=60)],
+        },
+        "anchors": {
+            "fast_schedule_id": "peft",
+            "economical_schedule_id": "cheapest",
+            "t_fast_us": 11,
+            "t_economical_us": 20,
+            "cost_fast_ncu": 120,
+            "cost_economical_ncu": 40,
+            "deadline_range_degenerate": False,
         },
         "candidate_set_sha256": "d" * 64,
     }
@@ -205,7 +226,7 @@ def test_calibration_schema_and_lower_bound_semantics():
 
 
 def test_qos_instance_reconstructs_deadline_budget_and_joint_witness():
-    witness = _schedule("witness", makespan=14, cost=40)
+    witness = _schedule("witness", makespan=12, cost=40)
     instance = {
         "schema_version": 1,
         "instance_id": "instance-tight",
@@ -216,23 +237,32 @@ def test_qos_instance_reconstructs_deadline_budget_and_joint_witness():
         "scenario_profile": "balanced",
         "ifc_realization_seed": 101,
         "deadline": {
-            "t_ref_us": 12,
-            "factor_numerator": 5,
-            "factor_denominator": 4,
-            "deadline_us": 15,
+            "fast_schedule_id": "peft",
+            "economical_schedule_id": "cheapest",
+            "t_fast_us": 11,
+            "t_economical_us": 20,
+            "time_gap_us": 9,
+            "interpolation_numerator": 1,
+            "interpolation_denominator": 10,
+            "deadline_us": 12,
+            "deadline_range_degenerate": False,
         },
         "budget": {
-            "cost_time_ncu": 100,
+            "cost_fast_ncu": 120,
             "cost_floor_ref_ncu": 40,
-            "budget_gap_ncu": 6,
+            "budget_gap_ncu": 8,
             "factor_numerator": 1,
             "factor_denominator": 10,
-            "budget_ncu": 46,
+            "budget_ncu": 48,
             "budget_range_degenerate": False,
         },
         "calibration": {
-            "heft_scheduler_version": "v1",
-            "cheapest_scheduler_version": "v1",
+            "reference_scheduler_versions": {
+                "deterministic_heft_ifc": "v1",
+                "deterministic_peft_ifc": "v1",
+                "deterministic_cpop_ifc": "v1",
+                "deterministic_cost_reference_ifc": "v1",
+            },
             "moheft_scheduler_version": "v1",
             "moheft_k": 50,
             "candidate_set_sha256": "1" * 64,
@@ -243,7 +273,7 @@ def test_qos_instance_reconstructs_deadline_budget_and_joint_witness():
     instance["content_sha256"] = content_sha256(instance)
     validate_qos_instance(instance)
 
-    instance["budget"]["budget_ncu"] = 47
+    instance["budget"]["budget_ncu"] = 49
     with pytest.raises(BenchmarkValidationError, match="does not reconstruct"):
         validate_qos_instance(instance)
 

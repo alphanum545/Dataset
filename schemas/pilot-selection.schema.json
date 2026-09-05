@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/pilot-selection.schema.json",
+  "title": "Outcome-independent IFC pilot selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "selection_id",
+    "dataset_version",
+    "selector",
+    "source_manifest_sha256",
+    "configuration_sha256",
+    "candidate_universe_count",
+    "candidate_universe_sha256",
+    "selected_count",
+    "split_counts",
+    "coverage",
+    "entries",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "selection_id": {"$ref": "common.schema.json#/$defs/identifier"},
+    "dataset_version": {"$ref": "common.schema.json#/$defs/identifier"},
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector_id", "selector_version", "seed", "construction_attempts"],
+      "properties": {
+        "selector_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "selector_version": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer", "minimum": 0},
+        "construction_attempts": {"type": "integer", "minimum": 1}
+      }
+    },
+    "source_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "configuration_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "candidate_universe_count": {"const": 2835},
+    "candidate_universe_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "selected_count": {"const": 200},
+    "split_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "holdout"],
+      "properties": {
+        "development": {"const": 160},
+        "holdout": {"const": 40}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overall_marginals",
+        "development_marginals",
+        "holdout_marginals",
+        "overall_pairwise",
+        "holdout_pairwise"
+      ],
+      "properties": {
+        "overall_marginals": {"$ref": "#/$defs/marginals"},
+        "development_marginals": {"$ref": "#/$defs/marginals"},
+        "holdout_marginals": {"$ref": "#/$defs/marginals"},
+        "overall_pairwise": {
+          "type": "array",
+          "minItems": 15,
+          "maxItems": 15,
+          "items": {"$ref": "#/$defs/pairwiseCoverage"}
+        },
+        "holdout_pairwise": {
+          "type": "array",
+          "minItems": 15,
+          "maxItems": 15,
+          "items": {"$ref": "#/$defs/pairwiseCoverage"}
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 200,
+      "maxItems": 200,
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+  },
+  "$defs": {
+    "countMap": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "marginals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "target_task_count",
+        "replicate_id",
+        "resource_scale",
+        "scenario_profile",
+        "qos_profile"
+      ],
+      "properties": {
+        "family": {"$ref": "#/$defs/countMap"},
+        "target_task_count": {"$ref": "#/$defs/countMap"},
+        "replicate_id": {"$ref": "#/$defs/countMap"},
+        "resource_scale": {"$ref": "#/$defs/countMap"},
+        "scenario_profile": {"$ref": "#/$defs/countMap"},
+        "qos_profile": {"$ref": "#/$defs/countMap"}
+      }
+    },
+    "pairwiseCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimensions", "observed_pairs", "possible_pairs"],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "family",
+              "target_task_count",
+              "replicate_id",
+              "resource_scale",
+              "scenario_profile",
+              "qos_profile"
+            ]
+          }
+        },
+        "observed_pairs": {"type": "integer", "minimum": 1},
+        "possible_pairs": {"type": "integer", "minimum": 1}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "family",
+        "target_task_count",
+        "replicate_id",
+        "source_sha256",
+        "source_path",
+        "ifc_realization_seed",
+        "resource_scale",
+        "scenario_profile",
+        "qos_profile",
+        "split"
+      ],
+      "properties": {
+        "candidate_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "family": {"$ref": "common.schema.json#/$defs/family"},
+        "target_task_count": {"enum": [60, 100, 200, 400, 600, 800, 1000]},
+        "replicate_id": {"$ref": "common.schema.json#/$defs/replicate"},
+        "source_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "source_path": {"type": "string", "pattern": "\\.dax$"},
+        "ifc_realization_seed": {"type": "integer", "minimum": 0},
+        "resource_scale": {"$ref": "common.schema.json#/$defs/resourceScale"},
+        "scenario_profile": {"$ref": "common.schema.json#/$defs/scenarioProfile"},
+        "qos_profile": {"$ref": "common.schema.json#/$defs/qosProfile"},
+        "split": {"enum": ["development", "holdout"]}
+      }
+    }
+  }
+}
