@@ -11,7 +11,8 @@ from generator.config import ConfigError, load_config
 from .calibration import validate_calibration_result_against_instance
 from .errors import BenchmarkValidationError
 from .materialization import validate_pilot_materialization_manifest
-from .semantic import validate_pilot_selection, validate_source_manifest
+from .pilot import validate_pilot_selection
+from .semantic import validate_source_manifest
 
 
 def _parser() -> argparse.ArgumentParser:
