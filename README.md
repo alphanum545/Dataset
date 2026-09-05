@@ -10,7 +10,7 @@ The benchmark dataset is designed and frozen before any proposed scheduling algo
 
 **Stage 3 — pilot IFC benchmark generation and validation.**
 
-The v1 pilot specification, deterministic generator core, source-workflow acquisition, outcome-independent 200-input selector, and frozen deterministic calibration portfolio are implemented. The 105 exact-size Pegasus/Bharathi source DAX artifacts are committed together with `manifests/source-workflows-v1.json`. The selected pilot remains split into 160 development and 40 protected holdout inputs before calibration outcomes are observed.
+The v1 pilot specification, deterministic generator core, source-workflow acquisition, outcome-independent 200-input selector, frozen deterministic calibration portfolio, and pilot materialization pipeline are implemented. The 105 exact-size Pegasus/Bharathi source DAX artifacts are committed together with `manifests/source-workflows-v1.json`. The selected pilot remains split into 160 development and 40 protected holdout inputs.
 
 The v1 pilot candidate defines:
 
@@ -23,10 +23,11 @@ The v1 pilot candidate defines:
 - a multi-scheduler IFC fast-to-economical deadline envelope;
 - deterministic stratified selection of 200 pilot inputs;
 - deterministic HEFT-IFC, PEFT-IFC, CPOP-IFC, cost-reference-IFC, and MOHEFT calibration;
-- deadline-conditioned budget calibration and joint-feasibility witnesses;
+- exact materialization of deadline-conditioned budgets and joint-feasibility witnesses;
+- a checksummed materialization manifest preserving the development/holdout split and all support artifacts;
 - source acquisition, reproducibility, validation, and freeze rules.
 
-No materialized IFC benchmark instance is frozen yet. The next step is to materialize only the selected 200 base IFC inputs, run the frozen calibration portfolio, and validate envelope/budget behavior before any proposed-algorithm tuning.
+The full generated pilot payload is not frozen in Git yet. Before choosing permanent storage, a representative real 1000-task/S03 realization is sized for raw/compressed base and calibration payloads, peak memory, and runtime. This avoids committing large route matrices blindly.
 
 ## Candidate v1 matrix
 
@@ -102,6 +103,8 @@ Each core instance has a paired deadline and budget. Deadlines are interpolated 
 
 Budget is measured between the cheapest calibration schedule known to satisfy the corresponding deadline and the fast-anchor schedule cost. Every core instance therefore requires a stored/reproducible schedule satisfying both deadline and budget.
 
+The frozen `candidate_id` is retained as the materialized QoS `instance_id`. Multiple selected QoS profiles may share one base realization; that base and its calibration are generated once and referenced by every associated materialized input. See `docs/PILOT_MATERIALIZATION.md`.
+
 ## Repository structure
 
 ```text
@@ -113,6 +116,7 @@ Dataset/
 │   ├── DEADLINE_STRATEGY.md
 │   ├── BUDGET_STRATEGY.md
 │   ├── PILOT_SELECTION.md
+│   ├── PILOT_MATERIALIZATION.md
 │   ├── REFERENCE_SCHEDULERS.md
 │   ├── SCHEDULE_EVALUATION.md
 │   ├── RESOURCE_MODEL.md
@@ -150,14 +154,41 @@ python -m validation.cli calibration-result \
   --base-instance <base-instance.json>
 ```
 
+## Pilot materialization commands
+
+Materialize exactly the frozen 200 pilot identities into a new/empty output root:
+
+```bash
+python -m generator.cli materialize-pilot \
+  --config config/benchmark-v1.yaml \
+  --source-manifest manifests/source-workflows-v1.json \
+  --pilot-selection manifests/pilot-selection-v1.json \
+  --source-root source_workflows \
+  --output-root <pilot-root> \
+  --manifest <pilot-materialization-manifest.json> \
+  --generator-commit-sha <40-char-git-sha>
+```
+
+Then recheck source checksums, deterministic base regeneration, all calibration schedules, exact QoS reconstruction, artifact checksums, and each joint witness:
+
+```bash
+python -m validation.cli pilot-materialization \
+  --manifest <pilot-materialization-manifest.json> \
+  --dataset-root <pilot-root> \
+  --config config/benchmark-v1.yaml \
+  --source-manifest manifests/source-workflows-v1.json \
+  --pilot-selection manifests/pilot-selection-v1.json \
+  --source-root source_workflows
+```
+
 ## Experimental workflow
 
 1. Specify and review benchmark semantics. **Done for pilot candidate.**
 2. Implement deterministic source validation and the generator core. **Done.**
 3. Acquire and freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Done.**
 4. Freeze the outcome-independent 200-input pilot selection. **Done.**
-5. Implement the calibration portfolio and materialize only selected pilot inputs. **Calibration implementation done; materialization is next.**
-6. Adjust only predeclared pilot parameters if validation demonstrates a benchmark-design problem.
+5. Implement the calibration portfolio and pilot materializer. **Done; generated-payload sizing/storage decision is current.**
+6. Materialize the selected pilot, inspect development-side benchmark behavior, and adjust only predeclared parameters if validation demonstrates a benchmark-design problem.
 7. Generate and freeze dataset v1.
 8. Run every baseline algorithm on the same frozen instances.
 9. Analyse failures, constraint violations, placement behavior, cost/energy trade-offs, and scaling.
@@ -165,4 +196,4 @@ python -m validation.cli calibration-result \
 
 ## Status
 
-The v1 raw source-workflow corpus and selected pilot identities are frozen on `main`; the full IFC benchmark is **not frozen yet**. The reference calibration implementation is defined, while pilot materialization, calibration-result generation, deadline/budget witness materialization, feasibility validation, and sensitivity analysis remain.
+The v1 raw source-workflow corpus and selected pilot identities are frozen on `main`; the full IFC benchmark is **not frozen yet**. Reference calibration and deterministic pilot materialization are implemented. The immediate gate is representative large-instance sizing, followed by the storage decision, full 200-input generation/validation, and development-side pilot analysis. Holdout comparative outcomes remain sealed.
