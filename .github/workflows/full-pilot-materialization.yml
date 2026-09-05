@@ -1,0 +1,119 @@
+name: full-pilot-materialization
+
+on:
+  pull_request:
+    paths:
+      - generator/materialize.py
+      - generator/reference_schedulers.py
+      - generator/network.py
+      - generator/schedule.py
+      - generator/instance.py
+      - generator/cli.py
+      - validation/materialization.py
+      - validation/base_instance.py
+      - validation/calibration.py
+      - validation/cli.py
+      - schemas/base-ifc-instance.schema.json
+      - schemas/pilot-materialization.schema.json
+      - schemas/qos-instance.schema.json
+      - config/benchmark-v1.yaml
+      - manifests/pilot-selection-v1.json
+      - manifests/source-workflows-v1.json
+      - source_workflows/**
+      - .github/workflows/full-pilot-materialization.yml
+
+jobs:
+  materialize-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact generator head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Materialize exact frozen 200-input pilot
+        run: |
+          /usr/bin/time -v -o "$RUNNER_TEMP/materialization-time.txt" \
+            python -m generator.cli materialize-pilot \
+              --config config/benchmark-v1.yaml \
+              --source-manifest manifests/source-workflows-v1.json \
+              --pilot-selection manifests/pilot-selection-v1.json \
+              --source-root source_workflows \
+              --output-root "$RUNNER_TEMP/pilot" \
+              --manifest "$RUNNER_TEMP/pilot-materialization-v1.json" \
+              --generator-commit-sha "${{ github.event.pull_request.head.sha }}"
+      - name: Fully validate generated pilot
+        run: |
+          /usr/bin/time -v -o "$RUNNER_TEMP/validation-time.txt" \
+            python -m validation.cli pilot-materialization \
+              --manifest "$RUNNER_TEMP/pilot-materialization-v1.json" \
+              --dataset-root "$RUNNER_TEMP/pilot" \
+              --config config/benchmark-v1.yaml \
+              --source-manifest manifests/source-workflows-v1.json \
+              --pilot-selection manifests/pilot-selection-v1.json \
+              --source-root source_workflows
+      - name: Report pilot counts, size, degeneracy, and resources
+        run: |
+          echo '--- materialization resources ---'
+          cat "$RUNNER_TEMP/materialization-time.txt"
+          echo '--- validation resources ---'
+          cat "$RUNNER_TEMP/validation-time.txt"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          pilot = root / 'pilot'
+          manifest_path = root / 'pilot-materialization-v1.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          deadline_degenerate = 0
+          budget_degenerate = 0
+          time_gaps = []
+          budget_widths = []
+          for entry in manifest['entries']:
+              instance = json.loads((pilot / entry['path']).read_text(encoding='utf-8'))
+              deadline = instance['deadline']
+              budget = instance['budget']
+              deadline_degenerate += int(deadline['deadline_range_degenerate'])
+              budget_degenerate += int(budget['budget_range_degenerate'])
+              time_gaps.append(deadline['time_gap_us'])
+              budget_widths.append(budget['cost_fast_ncu'] - budget['cost_floor_ref_ncu'])
+
+          raw_bytes = sum(path.stat().st_size for path in pilot.rglob('*') if path.is_file())
+          raw_bytes += manifest_path.stat().st_size
+          print(json.dumps({
+              'base_instance_count': manifest['base_instance_count'],
+              'calibration_count': manifest['calibration_count'],
+              'instance_count': manifest['instance_count'],
+              'split_counts': manifest['split_counts'],
+              'deadline_degenerate_count': deadline_degenerate,
+              'budget_degenerate_count': budget_degenerate,
+              'min_time_gap_us': min(time_gaps),
+              'max_time_gap_us': max(time_gaps),
+              'min_budget_width_ncu': min(budget_widths),
+              'max_budget_width_ncu': max(budget_widths),
+              'raw_payload_bytes': raw_bytes,
+              'file_count': sum(1 for path in pilot.rglob('*') if path.is_file()) + 1,
+          }, sort_keys=True))
+          PY
+          tar -czf "$RUNNER_TEMP/pilot-materialization-v1.tar.gz" \
+            -C "$RUNNER_TEMP" pilot pilot-materialization-v1.json
+          echo "compressed_payload_bytes=$(stat -c %s "$RUNNER_TEMP/pilot-materialization-v1.tar.gz")"
+      - name: Upload validated pilot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-materialization-v1-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/pilot/
+            ${{ runner.temp }}/pilot-materialization-v1.json
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 7
