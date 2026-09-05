@@ -102,7 +102,8 @@ def validate_calibration_result_against_instance(
     result: dict[str, Any], base_instance: dict[str, Any]
 ) -> int:
     """Re-evaluate every calibration schedule against one authoritative base instance."""
-    from .semantic import validate_base_instance, validate_schedule
+    from .base_instance import validate_base_instance
+    from .semantic import validate_schedule
 
     validate_base_instance(base_instance)
     validate_calibration_result(result)
