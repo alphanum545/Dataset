@@ -18,6 +18,10 @@ on:
       - source_workflows/**
       - .github/workflows/pilot-materialization.yml
 
+concurrency:
+  group: pilot-sizing-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   large-instance-sizing-smoke:
     runs-on: ubuntu-latest
