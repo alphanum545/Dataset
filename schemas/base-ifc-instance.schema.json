@@ -14,7 +14,6 @@
     "execution_time_us",
     "compute_cost_ncu",
     "compute_energy_nj",
-    "communication",
     "content_sha256"
   ],
   "properties": {
@@ -67,23 +66,6 @@
     "execution_time_us": {"$ref": "#/$defs/positiveMatrix"},
     "compute_cost_ncu": {"$ref": "#/$defs/nonnegativeMatrix"},
     "compute_energy_nj": {"$ref": "#/$defs/nonnegativeMatrix"},
-    "communication": {
-      "type": "object",
-      "minProperties": 0,
-      "additionalProperties": {
-        "type": "object",
-        "minProperties": 1,
-        "additionalProperties": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["communication_time_us", "communication_energy_pj"],
-          "properties": {
-            "communication_time_us": {"type": "integer", "minimum": 0},
-            "communication_energy_pj": {"type": "integer", "minimum": 0}
-          }
-        }
-      }
-    },
     "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
   },
   "$defs": {

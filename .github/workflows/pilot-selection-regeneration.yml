@@ -1,0 +1,75 @@
+name: pilot-selection-regeneration
+
+on:
+  pull_request:
+    paths:
+      - generator/pilot.py
+      - config/benchmark-v1.yaml
+      - schemas/pilot-selection.schema.json
+      - manifests/pilot-selection-v1.json
+      - tests/test_pilot.py
+      - .github/workflows/pilot-selection-regeneration.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pilot-selection-regeneration-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate-and-validate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Regenerate frozen selector v2 manifest
+        run: |
+          python -m generator.cli select-pilot \
+            --config config/benchmark-v1.yaml \
+            --source-manifest manifests/source-workflows-v1.json \
+            --output manifests/pilot-selection-v1.json
+      - name: Validate exact selection and base isolation
+        run: |
+          python -m validation.cli pilot-selection \
+            --manifest manifests/pilot-selection-v1.json \
+            --config config/benchmark-v1.yaml \
+            --source-manifest manifests/source-workflows-v1.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path('manifests/pilot-selection-v1.json').read_text(encoding='utf-8')
+          )
+          isolation = manifest['base_isolation']
+          print(json.dumps(isolation, sort_keys=True))
+          if isolation['holdout_unique_base_count'] != 40:
+              raise SystemExit('holdout must contain 40 unique base realizations')
+          if isolation['cross_split_base_overlap_count'] != 0:
+              raise SystemExit('development and holdout bases must be disjoint')
+          PY
+          python -m pytest tests/test_pilot.py
+          git diff --check
+      - name: Commit regenerated manifest when changed
+        run: |
+          if git diff --quiet -- manifests/pilot-selection-v1.json; then
+            echo 'pilot selection manifest already matches selector v2'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add manifests/pilot-selection-v1.json
+          git commit -m 'Regenerate base-disjoint pilot selection v2'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
