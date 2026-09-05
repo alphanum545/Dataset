@@ -9,6 +9,7 @@ from .semantic import (
     validate_normalized_workflow,
     validate_qos_instance,
     validate_resources,
+    validate_schedule,
     validate_source_manifest,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "validate_normalized_workflow",
     "validate_qos_instance",
     "validate_resources",
+    "validate_schedule",
     "validate_source_manifest",
 ]

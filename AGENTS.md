@@ -27,6 +27,7 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Invoke the generator CLI with `python -m generator.cli`.
 - Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
 - Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.
+- `generator.schedule` is the authoritative v1 scheduling boundary: algorithms provide a complete topological task order and task-to-resource mapping to `build_schedule`, while imported/explicit schedules must pass `validation.validate_schedule` against their base instance. Task intervals are half-open, resources are serial, insertion into safe idle gaps is allowed, and all totals/feasibility/identity fields are recomputed with exact integers.
 - Run source acquisition with `python -m generator.acquire --config config/benchmark-v1.yaml --upstream-dir <bharathi-dir> --output-root source_workflows --manifest manifests/source-workflows-v1.json`.
 - Python package discovery is intentionally limited to `generator*` and `validation*`; repository data/configuration directories are not importable Python packages.
 - GitHub Actions runs the install and pytest gates for pull requests and pushes to `main`.

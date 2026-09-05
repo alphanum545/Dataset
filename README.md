@@ -82,6 +82,9 @@ The numerical model uses explicit integer units:
 
 Communication is routed through explicit wireless/LAN/backbone segments rather than using an unexplained J/MB constant.
 
+All schedulers share the authoritative deterministic construction and verification
+semantics in `generator.schedule`; see `docs/SCHEDULE_EVALUATION.md`.
+
 These numerical values are pilot candidates and must pass sensitivity/trade-off validation before dataset freeze.
 
 ## Joint QoS profiles

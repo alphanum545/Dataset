@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 from generator.canonical import content_sha256
 from generator.dax import execution_time_us
@@ -14,6 +14,9 @@ from generator.network import route_metrics
 
 from .errors import BenchmarkValidationError
 from .schema import validate_schema
+
+if TYPE_CHECKING:
+    from generator.schedule import ScheduleEvaluation
 
 
 _FAMILIES = ("montage", "cybershake", "ligo", "sipht", "genome")
@@ -399,6 +402,28 @@ def _validate_schedule_shape(schedule: dict[str, Any]) -> None:
     expected_checksum = content_sha256(schedule, checksum_field="schedule_sha256")
     if schedule["schedule_sha256"] != expected_checksum:
         _fail("schedule_sha256 does not match canonical schedule content")
+
+
+def validate_schedule(
+    instance: dict[str, Any],
+    schedule: dict[str, Any],
+    *,
+    deadline_us: int | None = None,
+    budget_ncu: int | None = None,
+) -> ScheduleEvaluation:
+    """Validate a schedule against its authoritative base-instance semantics."""
+    from generator.schedule import ScheduleEvaluationError, evaluate_schedule
+
+    validate_schema(schedule, "schedule")
+    try:
+        return evaluate_schedule(
+            instance,
+            schedule,
+            deadline_us=deadline_us,
+            budget_ncu=budget_ncu,
+        )
+    except ScheduleEvaluationError as exc:
+        _fail(str(exc))
 
 
 def _validate_relative_posix_path(value: str, *, label: str) -> None:
