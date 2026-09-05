@@ -1,0 +1,78 @@
+name: pilot-materialization
+
+on:
+  pull_request:
+    paths:
+      - generator/materialize.py
+      - generator/reference_schedulers.py
+      - generator/cli.py
+      - validation/materialization.py
+      - validation/calibration.py
+      - validation/cli.py
+      - schemas/pilot-materialization.schema.json
+      - schemas/qos-instance.schema.json
+      - tests/test_materialization.py
+      - config/benchmark-v1.yaml
+      - manifests/pilot-selection-v1.json
+      - manifests/source-workflows-v1.json
+      - source_workflows/**
+      - .github/workflows/pilot-materialization.yml
+
+jobs:
+  large-instance-sizing-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout dataset repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Build 1000-task S03 IFC base instance
+        run: |
+          python -m generator.cli normalize-dax \
+            --config config/benchmark-v1.yaml \
+            --dax source_workflows/pegasus-bharathi-bb1f8d43/montage/1000/r01.dax \
+            --family montage \
+            --task-count 1000 \
+            --replicate r01 \
+            --output "$RUNNER_TEMP/montage-1000.json"
+          /usr/bin/time -v -o "$RUNNER_TEMP/base-time.txt" \
+            python -m generator.cli build-base-instance \
+              --config config/benchmark-v1.yaml \
+              --normalized-workflow "$RUNNER_TEMP/montage-1000.json" \
+              --scale S03 \
+              --scenario balanced \
+              --seed 101 \
+              --output "$RUNNER_TEMP/base.json"
+      - name: Calibrate large IFC instance
+        run: |
+          /usr/bin/time -v -o "$RUNNER_TEMP/calibration-time.txt" \
+            python -m generator.cli calibrate-instance \
+              --config config/benchmark-v1.yaml \
+              --base-instance "$RUNNER_TEMP/base.json" \
+              --output "$RUNNER_TEMP/calibration.json"
+          python -m validation.cli calibration-result \
+            --result "$RUNNER_TEMP/calibration.json" \
+            --base-instance "$RUNNER_TEMP/base.json"
+      - name: Report representative storage and memory
+        run: |
+          echo '--- base generation resources ---'
+          cat "$RUNNER_TEMP/base-time.txt"
+          echo '--- calibration resources ---'
+          cat "$RUNNER_TEMP/calibration-time.txt"
+          python - <<'PY'
+          import gzip
+          from pathlib import Path
+          import os
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          for name in ('base.json', 'calibration.json'):
+              data = (root / name).read_bytes()
+              compressed = gzip.compress(data, compresslevel=6)
+              print(f'{name}: raw_bytes={len(data)} gzip_bytes={len(compressed)}')
+          PY
