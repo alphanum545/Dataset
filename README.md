@@ -27,7 +27,7 @@ The v1 pilot candidate defines:
 - a checksummed materialization manifest preserving the development/holdout split and all support artifacts;
 - source acquisition, reproducibility, validation, and freeze rules.
 
-The full generated pilot payload is not frozen in Git yet. Before choosing permanent storage, a representative real 1000-task/S03 realization is sized for raw/compressed base and calibration payloads, peak memory, and runtime. This avoids committing large route matrices blindly.
+A real 1000-task/S03 sizing run exposed that the earlier expanded dependency-by-resource-pair communication matrix was redundant and too large. V1 draft now stores compact communication inputs and derives placement communication through one authoritative route function. On the same representative case, base JSON fell from 363,028,528 to 3,630,983 raw bytes and peak base-build memory fell from 2,195,180 kB to 43,732 kB. The full frozen 200-input generation/validation gate is now the remaining payload-size decision before permanent storage.
 
 ## Candidate v1 matrix
 
@@ -87,7 +87,7 @@ The numerical model uses explicit integer units:
 - network energy: picojoules
 - normalized cost/budget: nano-normalized-cost units
 
-Communication is routed through explicit wireless/LAN/backbone segments rather than using an unexplained J/MB constant.
+Communication is routed through explicit wireless/LAN/backbone segments rather than using an unexplained J/MB constant. Base instances store dependency `data_bits`, resource tiers, and the scenario-adjusted network; concrete placement communication is derived exactly by `generator.network.resource_route_metrics` instead of storing an `E × R²` pair matrix.
 
 All schedulers share the authoritative deterministic construction and verification semantics in `generator.schedule`; see `docs/SCHEDULE_EVALUATION.md`. The frozen calibration algorithms and deterministic IFC adaptations are documented in `docs/REFERENCE_SCHEDULERS.md`.
 
@@ -187,8 +187,8 @@ python -m validation.cli pilot-materialization \
 2. Implement deterministic source validation and the generator core. **Done.**
 3. Acquire and freeze the 105 source DAX artifacts using the predeclared acceptance rule. **Done.**
 4. Freeze the outcome-independent 200-input pilot selection. **Done.**
-5. Implement the calibration portfolio and pilot materializer. **Done; generated-payload sizing/storage decision is current.**
-6. Materialize the selected pilot, inspect development-side benchmark behavior, and adjust only predeclared parameters if validation demonstrates a benchmark-design problem.
+5. Implement the calibration portfolio, compact IFC base representation, and pilot materializer. **Done.**
+6. Materialize and fully validate the exact selected 200-input pilot, then inspect development-side benchmark behavior and adjust only predeclared parameters if validation demonstrates a benchmark-design problem. **Current.**
 7. Generate and freeze dataset v1.
 8. Run every baseline algorithm on the same frozen instances.
 9. Analyse failures, constraint violations, placement behavior, cost/energy trade-offs, and scaling.
@@ -196,4 +196,4 @@ python -m validation.cli pilot-materialization \
 
 ## Status
 
-The v1 raw source-workflow corpus and selected pilot identities are frozen on `main`; the full IFC benchmark is **not frozen yet**. Reference calibration and deterministic pilot materialization are implemented. The immediate gate is representative large-instance sizing, followed by the storage decision, full 200-input generation/validation, and development-side pilot analysis. Holdout comparative outcomes remain sealed.
+The v1 raw source-workflow corpus and selected pilot identities are frozen on `main`; the full IFC benchmark is **not frozen yet**. Reference calibration and deterministic pilot materialization are implemented, and the representative compact S03 sizing gate has passed. The current gate is full 200-input generation, cross-artifact validation, degeneracy reporting, and observed total payload sizing. Holdout comparative outcomes remain sealed.
