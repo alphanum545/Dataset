@@ -71,13 +71,17 @@ For profile fraction `alpha = p/q`, materialize:
 
 `deadline_us = T_fast + ceil(p × time_gap_us / q)`
 
-The frozen profiles are:
+Development-only sensitivity analysis showed that the original `1/10`, `1/2`, `9/10` levels were too permissive at the tight end because `T_economical` is often much larger than `T_fast`. The selected v1-draft profiles are therefore:
 
 | Profile | Fraction | Interpretation |
 | --- | ---: | --- |
-| tight | `1/10` | 10% of the feasible time–cost interval above the fast anchor |
-| moderate | `1/2` | midpoint of the interval |
-| relaxed | `9/10` | 90% of the interval toward the economical anchor |
+| tight | `1/100` | 1% of the feasible time–cost interval above the fast anchor |
+| moderate | `1/4` | 25% of the interval toward the economical anchor |
+| relaxed | `3/4` | 75% of the interval toward the economical anchor |
+
+Across the 159 unique development bases, these levels admit median fractions of approximately 9.4%, 52.8%, and 83.0% of the unique calibration schedules, respectively. The tight level also creates observable deadline pressure among the time-oriented references instead of allowing HEFT-IFC, PEFT-IFC, and CPOP-IFC to meet every tight deadline.
+
+The empirical selection and the full candidate sweep are recorded in `docs/DEADLINE_SENSITIVITY.md`.
 
 All calculations use integers and exact rational arithmetic. Binary floating point is forbidden.
 
