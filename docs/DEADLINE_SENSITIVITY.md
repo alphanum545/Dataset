@@ -80,6 +80,12 @@ Median feasible calibration fractions under the selected levels were stable acro
 
 They were also stable across every configured task-count level from 60 through 1000 tasks. No workflow family or size class forced a separate deadline rule.
 
+## Selection provenance after the revision
+
+Regenerating the outcome-independent selector after changing the deadline configuration preserved the candidate universe and split structure. The candidate-universe SHA-256 remains `00d5e7054cae9bf6588d10073dd464a0702d473af5ca189fbc46f16a343fb24d`, while the configuration SHA-256 changed to `06c224d89184355eedf778ef9bcf107dad9a07ae77afbb0403da4ffa87a0835d` as expected. The regenerated manifest still reports 159 unique development bases, 40 unique holdout bases, and zero cross-split base overlap, with the same marginal and pairwise-coverage counts.
+
+This confirms that the deadline sensitivity revision changes the QoS construction policy and its provenance, not the outcome-independent candidate universe or holdout-isolation design.
+
 ## Budget interaction
 
 The budget method is intentionally not retuned in the same step. After the new deadline is constructed, the existing deadline-conditioned cost floor is recomputed:
