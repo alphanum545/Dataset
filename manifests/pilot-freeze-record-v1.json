@@ -4,7 +4,17 @@
   "dataset_version": "v1-draft",
   "selection_id": "pilot-selection-v1",
   "materialization_version": "pilot_materialization_v1",
-  "status": "validated_payload_binary_copy_pending",
+  "status": "superseded_by_deadline_sensitivity_revision",
+  "superseded_by": {
+    "branch": "research/deadline-pilot-revision-v1",
+    "reason": "development-only sensitivity analysis rejected the original 1/10, 1/2, 9/10 deadline fractions before proposed-algorithm tuning",
+    "replacement_deadline_fractions": {
+      "tight": "1/100",
+      "moderate": "1/4",
+      "relaxed": "3/4"
+    },
+    "revalidation_required": true
+  },
   "generated_from": {
     "repository": "alphanum545/Dataset",
     "pull_request": 16,
@@ -41,9 +51,10 @@
     "github_artifact_retention_days": 7,
     "research_s3_freeze_record": "research/dataset/pilot-v1/FREEZE_RECORD.json",
     "target_s3_prefix": "research/dataset/pilot-v1/payload/",
-    "binary_copy_status": "pending because the connected research S3 MCP exposes UTF-8 text upload only with a 500000-byte maximum and cannot accept the 79 MB ZIP archive"
+    "binary_copy_status": "not_applicable_to_current_candidate; this payload belongs to the superseded deadline configuration"
   },
   "validation": {
+    "scope": "historical validation for the superseded deadline configuration only",
     "full_materialization": "passed",
     "full_cross_artifact_validation": "passed",
     "joint_witness_validation": "passed",
