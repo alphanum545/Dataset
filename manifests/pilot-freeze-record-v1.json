@@ -4,30 +4,35 @@
   "dataset_version": "v1-draft",
   "selection_id": "pilot-selection-v1",
   "materialization_version": "pilot_materialization_v1",
-  "status": "superseded_by_deadline_sensitivity_revision",
-  "superseded_by": {
+  "status": "validated_revised_candidate_merge_and_binary_copy_pending",
+  "generated_from": {
+    "repository": "alphanum545/Dataset",
+    "pull_request": 17,
     "branch": "research/deadline-pilot-revision-v1",
-    "reason": "development-only sensitivity analysis rejected the original 1/10, 1/2, 9/10 deadline fractions before proposed-algorithm tuning",
-    "replacement_deadline_fractions": {
+    "generator_commit_sha": "5266acbfb246a7354929330f1329227609ec1c06",
+    "github_actions_run_id": 34015855849,
+    "github_actions_job_id": 101439391736
+  },
+  "qos_policy": {
+    "deadline_interpolation_fractions": {
       "tight": "1/100",
       "moderate": "1/4",
       "relaxed": "3/4"
     },
-    "revalidation_required": true
-  },
-  "generated_from": {
-    "repository": "alphanum545/Dataset",
-    "pull_request": 16,
-    "branch": "feature/materialize-pilot-qos-v1",
-    "generator_commit_sha": "286888fa177d148e2d93c6757da15f57bcbbeb47",
-    "github_actions_run_id": 33985070206
+    "budget_interpolation_fractions": {
+      "tight": "1/10",
+      "moderate": "1/2",
+      "relaxed": "9/10"
+    },
+    "deadline_rounding": "ceil",
+    "arithmetic": "exact integer/rational"
   },
   "integrity": {
-    "selection_sha256": "f8afba6a81bd04e6503a52649830fb4fabdd65aa70de0a34950175aa07e7ad98",
-    "configuration_sha256": "cc0c2f7c044a3406a7021f2a06a59110b4413ca9823d9c641eb577dada062d06",
+    "selection_sha256": "37ea7f17596878c4bf065306f8ab9eb5236e983777f95efefea6dae6bdf93966",
+    "configuration_sha256": "06c224d89184355eedf778ef9bcf107dad9a07ae77afbb0403da4ffa87a0835d",
     "source_manifest_sha256": "7e304fc9929c24ba5a95543119e8147c19cf52845ae2ebe87d1682055a0e2d41",
-    "materialization_manifest_content_sha256": "b9d06f84678c0e0929e5d7598aef16fe576ac398f0a03311968657170e2a657a",
-    "github_artifact_zip_sha256": "576da5a20fa4fb4371193b156d44f17274519d1dd8fbab19d6e797d67c3dc35a"
+    "materialization_manifest_content_sha256": "8cf3440804868703d79871ce6b089cf7b9440121a8ebece6d5c3f407624d5b13",
+    "github_artifact_zip_sha256": "1cc0f68376d0ad09f9eae89a24a4d45c626922665b061b82d4cf8d50dabb53e6"
   },
   "validated_counts": {
     "base_instances": 199,
@@ -39,29 +44,48 @@
     "holdout_unique_bases": 40,
     "cross_split_base_overlap": 0,
     "deadline_degenerate": 0,
-    "budget_degenerate": 0,
+    "budget_degenerate": 14,
     "file_count": 599
   },
+  "validated_ranges": {
+    "min_time_gap_us": 356150957,
+    "max_time_gap_us": 5303643914000,
+    "min_budget_width_ncu": 0,
+    "max_budget_width_ncu": 516092497387850
+  },
   "payload": {
-    "raw_bytes": 619909680,
-    "measured_tar_gzip_bytes": 80428293,
-    "github_artifact_zip_bytes": 79235471,
-    "github_artifact_id": 9975624675,
-    "github_artifact_name": "pilot-materialization-v1-286888fa177d148e2d93c6757da15f57bcbbeb47",
-    "github_artifact_retention_days": 7,
+    "raw_bytes": 619865724,
+    "measured_tar_gzip_bytes": 80430497,
+    "github_artifact_zip_bytes": 79244735,
+    "github_artifact_id": 9984757541,
+    "github_artifact_name": "pilot-materialization-v1-5266acbfb246a7354929330f1329227609ec1c06",
+    "github_artifact_expires_at": "2026-09-13T07:17:07Z",
     "research_s3_freeze_record": "research/dataset/pilot-v1/FREEZE_RECORD.json",
     "target_s3_prefix": "research/dataset/pilot-v1/payload/",
-    "binary_copy_status": "not_applicable_to_current_candidate; this payload belongs to the superseded deadline configuration"
+    "binary_copy_status": "pending; the connected research S3 MCP is text-only and cannot upload the approximately 79 MB ZIP artifact"
   },
   "validation": {
-    "scope": "historical validation for the superseded deadline configuration only",
     "full_materialization": "passed",
     "full_cross_artifact_validation": "passed",
     "joint_witness_validation": "passed",
     "holdout_base_isolation": "passed",
     "github_test_suite": "56 passed",
     "source_acquisition_workflow": "passed",
-    "representative_s03_sizing": "passed"
+    "pilot_selection_regeneration": "passed",
+    "representative_large_instance_materialization": "passed",
+    "artifact_archive_audit": "passed; 200 QoS instances, zero cross-split base overlap, zero deadline degeneracy, 14 budget-degenerate boundary cases, zero joint-witness failures"
   },
-  "holdout_policy": "Comparative holdout scheduler outcomes remain sealed until the proposed mechanism and parameters are frozen. Holdout calibration is input construction only."
+  "budget_degenerate_boundary_cases": {
+    "count": 14,
+    "meaning": "C_floor_ref(D) equals C_fast, so the budget interpolation interval has zero width",
+    "decision": "retain; natural jointly feasible tight-QoS boundary cases, not validation failures"
+  },
+  "holdout_policy": "Comparative holdout scheduler outcomes remain sealed until the proposed mechanism and parameters are frozen. Holdout calibration is input construction only.",
+  "supersedes": {
+    "pull_request": 16,
+    "generator_commit_sha": "286888fa177d148e2d93c6757da15f57bcbbeb47",
+    "github_artifact_id": 9975624675,
+    "github_artifact_zip_sha256": "576da5a20fa4fb4371193b156d44f17274519d1dd8fbab19d6e797d67c3dc35a",
+    "reason": "development-only deadline sensitivity revision replaced deadline fractions 1/10, 1/2, 9/10 with 1/100, 1/4, 3/4 before proposed-algorithm tuning"
+  }
 }
