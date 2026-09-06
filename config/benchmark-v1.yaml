@@ -310,13 +310,13 @@ reference_makespan:
   deadline_interpolation_fractions:
     tight:
       numerator: 1
-      denominator: 10
+      denominator: 100
     moderate:
       numerator: 1
-      denominator: 2
+      denominator: 4
     relaxed:
-      numerator: 9
-      denominator: 10
+      numerator: 3
+      denominator: 4
   deadline_rounding: ceil
 
 budget:
