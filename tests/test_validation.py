@@ -105,6 +105,7 @@ def test_normalized_workflow_rejects_inconsistent_exact_values_and_identity():
 def test_base_instance_recomputes_every_materialized_matrix():
     instance = _base_instance()
     validate_base_instance(instance)
+    assert "communication" not in instance
 
     instance["compute_cost_ncu"]["A"]["fog-001"] += 1
     with pytest.raises(BenchmarkValidationError, match="compute_cost_ncu"):
@@ -116,15 +117,15 @@ def test_base_instance_recomputes_every_materialized_matrix():
         validate_base_instance(instance)
 
 
-def test_base_instance_rejects_incomplete_and_incorrect_routes():
+def test_base_instance_rejects_incomplete_matrix_and_incorrect_network():
     instance = _base_instance()
     del instance["execution_time_us"]["A"]["iot-001"]
     with pytest.raises(BenchmarkValidationError, match="resource keys do not exactly match"):
         validate_base_instance(instance)
 
     instance = _base_instance()
-    instance["communication"]["A->B"]["iot-001|iot-001"]["communication_time_us"] = 1
-    with pytest.raises(BenchmarkValidationError, match="communication.*is inconsistent"):
+    instance["network"]["routes"]["iot_fog"] = ["fog_lan"]
+    with pytest.raises(BenchmarkValidationError, match="network routes do not match"):
         validate_base_instance(instance)
 
     instance = _base_instance()

@@ -6,7 +6,7 @@ from .canonical import content_sha256
 from .dax import execution_time_us
 from .exact import ceil_div
 from .identity import base_instance_id
-from .network import build_network, route_metrics
+from .network import build_network
 from .resources import build_resources
 
 
@@ -18,7 +18,12 @@ def build_base_instance(
     scenario: str,
     seed: int,
 ) -> dict[str, Any]:
-    """Build the deterministic scheduling input before deadline/budget calibration."""
+    """Build the deterministic scheduling input before deadline/budget calibration.
+
+    Route-specific communication metrics are intentionally not expanded into an
+    edge-by-resource-pair matrix. They are exactly derivable from dependencies,
+    resource tiers, and the stored network model through generator.network.
+    """
     resources = build_resources(config, scale=scale, scenario=scenario, seed=seed)
     network = build_network(config, scenario=scenario)
 
@@ -40,23 +45,6 @@ def build_base_instance(
                 1_000_000,
             )
             compute_energy_matrix[task_id][resource_id] = int(resource["active_power_mw"]) * duration_us
-
-    communication_matrix: dict[str, dict[str, dict[str, int]]] = {}
-    for dependency in normalized_workflow["dependencies"]:
-        edge_id = f"{dependency['parent']}->{dependency['child']}"
-        edge_routes: dict[str, dict[str, int]] = {}
-        data_bits = int(dependency["data_bits"])
-        for source in resources:
-            for target in resources:
-                pair_key = f"{source['resource_id']}|{target['resource_id']}"
-                edge_routes[pair_key] = route_metrics(
-                    network,
-                    source_tier=source["tier"],
-                    target_tier=target["tier"],
-                    same_resource=source["resource_id"] == target["resource_id"],
-                    data_bits=data_bits,
-                )
-        communication_matrix[edge_id] = edge_routes
 
     dataset_version = str(config["dataset"]["version"])
     identifier = base_instance_id(
@@ -85,7 +73,6 @@ def build_base_instance(
         "execution_time_us": execution_matrix,
         "compute_cost_ncu": cost_matrix,
         "compute_energy_nj": compute_energy_matrix,
-        "communication": communication_matrix,
     }
     instance["content_sha256"] = content_sha256(instance)
     return instance

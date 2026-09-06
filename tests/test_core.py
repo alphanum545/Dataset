@@ -6,7 +6,7 @@ from generator.config import ConfigError, load_config
 from generator.canonical import content_sha256
 from generator.dax import DaxValidationError, execution_time_us, normalize_dax
 from generator.instance import build_base_instance
-from generator.network import build_network, route_metrics
+from generator.network import build_network, resource_route_metrics, route_metrics
 from generator.resources import build_resources
 
 
@@ -176,7 +176,7 @@ def test_same_resource_communication_is_zero():
     }
 
 
-def test_base_instance_materializes_exact_matrices():
+def test_base_instance_stores_compact_inputs_and_derives_routes():
     workflow = normalize_dax(DAX, family="montage", target_task_count=2, replicate_id="r01")
     instance = build_base_instance(workflow, CONFIG, scale="S01", scenario="balanced", seed=101)
     assert instance["metadata"]["base_instance_id"].startswith(
@@ -187,9 +187,25 @@ def test_base_instance_materializes_exact_matrices():
     assert instance["execution_time_us"]["A"]["iot-001"] == 2_500_000
     assert instance["compute_cost_ncu"]["A"]["iot-001"] == 0
     assert instance["compute_energy_nj"]["A"]["iot-001"] == 3_500 * 2_500_000
-    edge = instance["communication"]["A->B"]
-    assert edge["iot-001|iot-001"] == {"communication_time_us": 0, "communication_energy_pj": 0}
-    assert edge["iot-001|cloud-001"]["communication_time_us"] == 25096
+    assert "communication" not in instance
+
+    tiers = {resource["resource_id"]: resource["tier"] for resource in instance["resources"]}
+    same = resource_route_metrics(
+        instance["network"],
+        tiers,
+        source_resource_id="iot-001",
+        target_resource_id="iot-001",
+        data_bits=instance["dependencies"][0]["data_bits"],
+    )
+    cross = resource_route_metrics(
+        instance["network"],
+        tiers,
+        source_resource_id="iot-001",
+        target_resource_id="cloud-001",
+        data_bits=instance["dependencies"][0]["data_bits"],
+    )
+    assert same == {"communication_time_us": 0, "communication_energy_pj": 0}
+    assert cross["communication_time_us"] == 25096
 
 
 def test_base_instance_is_byte_stable_after_sorted_json_serialization():

@@ -6,6 +6,7 @@ from hashlib import sha256
 from typing import Any, Iterable, Mapping
 
 from .canonical import canonical_json_bytes, content_sha256
+from .network import resource_route_metrics
 
 
 _SCHEDULE_KEYS = {
@@ -70,6 +71,19 @@ def _instance_dimensions(instance: Mapping[str, Any]) -> tuple[list[str], set[st
     if not resource_ids:
         _fail("base instance must contain at least one resource")
     return task_ids, resource_ids
+
+
+def _resource_tiers(instance: Mapping[str, Any]) -> dict[str, str]:
+    try:
+        tiers = {
+            str(resource["resource_id"]): str(resource["tier"])
+            for resource in instance["resources"]
+        }
+    except (KeyError, TypeError) as exc:
+        _fail(f"base instance is missing resource tier data: {exc}")
+    if len(tiers) != len(instance["resources"]):
+        _fail("base instance resource IDs must be unique")
+    return tiers
 
 
 def canonical_schedule_id(
@@ -182,35 +196,45 @@ def _dependency_metrics(
     task_ready_us = {task_id: 0 for task_id in assignment_by_task}
     communication_time_us = 0
     network_energy_pj = 0
+    resource_tiers = _resource_tiers(instance)
     try:
         dependencies = instance["dependencies"]
+        network = instance["network"]
     except KeyError as exc:
-        _fail(f"base instance is missing dependencies: {exc}")
+        _fail(f"base instance is missing communication input data: {exc}")
 
     for dependency in dependencies:
         try:
             parent = dependency["parent"]
             child = dependency["child"]
+            data_bits = _exact_int(
+                dependency["data_bits"],
+                label=f"data_bits for {parent!r}->{child!r}",
+                minimum=0,
+            )
             parent_assignment = assignment_by_task[parent]
             child_assignment = assignment_by_task[child]
-        except (KeyError, TypeError) as exc:
-            _fail(f"base instance contains an invalid dependency: {exc}")
+            communication = resource_route_metrics(
+                network,
+                resource_tiers,
+                source_resource_id=parent_assignment["resource_id"],
+                target_resource_id=child_assignment["resource_id"],
+                data_bits=data_bits,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            _fail(f"base instance contains invalid communication input data: {exc}")
         edge_id = f"{parent}->{child}"
         pair = f"{parent_assignment['resource_id']}|{child_assignment['resource_id']}"
-        try:
-            communication = instance["communication"][edge_id][pair]
-            transfer_time = _exact_int(
-                communication["communication_time_us"],
-                label=f"communication time for {edge_id!r} on {pair!r}",
-                minimum=0,
-            )
-            transfer_energy = _exact_int(
-                communication["communication_energy_pj"],
-                label=f"communication energy for {edge_id!r} on {pair!r}",
-                minimum=0,
-            )
-        except (KeyError, TypeError) as exc:
-            _fail(f"base instance has no communication metrics for {edge_id!r} on {pair!r}: {exc}")
+        transfer_time = _exact_int(
+            communication["communication_time_us"],
+            label=f"communication time for {edge_id!r} on {pair!r}",
+            minimum=0,
+        )
+        transfer_energy = _exact_int(
+            communication["communication_energy_pj"],
+            label=f"communication energy for {edge_id!r} on {pair!r}",
+            minimum=0,
+        )
         if parent_assignment["resource_id"] == child_assignment["resource_id"] and (
             transfer_time != 0 or transfer_energy != 0
         ):
@@ -381,9 +405,18 @@ def build_schedule(
         if not isinstance(resource_id, str) or resource_id not in resource_ids:
             _fail(f"task {task_id!r} is assigned to unknown resource {resource_id!r}")
 
+    resource_tiers = _resource_tiers(instance)
     parents_by_task: dict[str, list[str]] = defaultdict(list)
+    dependency_bits: dict[str, int] = {}
     for dependency in instance["dependencies"]:
-        parents_by_task[dependency["child"]].append(dependency["parent"])
+        parent = dependency["parent"]
+        child = dependency["child"]
+        parents_by_task[child].append(parent)
+        dependency_bits[f"{parent}->{child}"] = _exact_int(
+            dependency["data_bits"],
+            label=f"data_bits for {parent!r}->{child!r}",
+            minimum=0,
+        )
     for parents in parents_by_task.values():
         parents.sort()
 
@@ -408,11 +441,22 @@ def build_schedule(
         for parent in parents_by_task[task_id]:
             parent_assignment = scheduled[parent]
             edge_id = f"{parent}->{task_id}"
-            pair = f"{parent_assignment['resource_id']}|{resource_id}"
-            communication = instance["communication"][edge_id][pair]
+            try:
+                communication = resource_route_metrics(
+                    instance["network"],
+                    resource_tiers,
+                    source_resource_id=parent_assignment["resource_id"],
+                    target_resource_id=resource_id,
+                    data_bits=dependency_bits[edge_id],
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                _fail(f"cannot derive communication metrics for {edge_id!r}: {exc}")
             transfer_time = _exact_int(
                 communication["communication_time_us"],
-                label=f"communication time for {edge_id!r} on {pair!r}",
+                label=(
+                    f"communication time for {edge_id!r} on "
+                    f"{parent_assignment['resource_id']}|{resource_id}"
+                ),
                 minimum=0,
             )
             ready_us = max(ready_us, parent_assignment["end_us"] + transfer_time)

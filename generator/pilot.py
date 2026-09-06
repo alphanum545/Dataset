@@ -18,6 +18,7 @@ _DIMENSIONS = (
     "scenario_profile",
     "qos_profile",
 )
+_BASE_DIMENSIONS = _DIMENSIONS[:-1]
 _ASSIGNMENT_ORDER = _DIMENSIONS[1:]
 _MAX_CONSTRUCTION_ATTEMPTS = 256
 
@@ -33,6 +34,10 @@ def _stable_key(seed: int, *parts: object) -> str:
 
 def _candidate_signature(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
     return tuple(candidate[dimension] for dimension in _DIMENSIONS)
+
+
+def _base_signature(candidate: Mapping[str, Any]) -> tuple[Any, ...]:
+    return tuple(candidate[dimension] for dimension in _BASE_DIMENSIONS)
 
 
 def _candidate_id(candidate: Mapping[str, Any], *, dataset_version: str) -> str:
@@ -156,10 +161,13 @@ def _assign_dimension(
     namespace: str,
     attempt: int,
     forbidden_signatures: set[tuple[Any, ...]],
+    forbidden_base_signatures: set[tuple[Any, ...]],
+    require_unique_bases: bool,
 ) -> bool:
     remaining = dict(targets)
     previous_dimensions = _DIMENSIONS[: _DIMENSIONS.index(dimension)]
     pair_counts: Counter[tuple[str, Any, Any]] = Counter()
+    used_base_signatures: set[tuple[Any, ...]] = set()
     order = sorted(
         range(len(rows)),
         key=lambda index: _stable_key(
@@ -173,6 +181,15 @@ def _assign_dimension(
         for value, available in remaining.items():
             if available <= 0:
                 continue
+            if dimension == _BASE_DIMENSIONS[-1]:
+                base_signature = tuple(
+                    value if item == dimension else row[item]
+                    for item in _BASE_DIMENSIONS
+                )
+                if base_signature in forbidden_base_signatures:
+                    continue
+                if require_unique_bases and base_signature in used_base_signatures:
+                    continue
             if dimension == _DIMENSIONS[-1]:
                 signature = tuple(
                     value if item == dimension else row[item] for item in _DIMENSIONS
@@ -206,6 +223,8 @@ def _assign_dimension(
         _, selected = min(choices)
         row[dimension] = selected
         remaining[selected] -= 1
+        if dimension == _BASE_DIMENSIONS[-1]:
+            used_base_signatures.add(_base_signature(row))
         for previous in previous_dimensions:
             pair_counts[(previous, row[previous], selected)] += 1
     return all(count == 0 for count in remaining.values())
@@ -230,8 +249,11 @@ def _construct_split(
     seed: int,
     split: str,
     forbidden_signatures: set[tuple[Any, ...]] | None = None,
+    forbidden_base_signatures: set[tuple[Any, ...]] | None = None,
+    require_unique_bases: bool = False,
 ) -> list[dict[str, Any]]:
     forbidden = set(forbidden_signatures or ())
+    forbidden_bases = set(forbidden_base_signatures or ())
     expected_count = sum(targets["family"].values())
     for dimension in _DIMENSIONS:
         if sum(targets[dimension].values()) != expected_count:
@@ -260,6 +282,8 @@ def _construct_split(
                 namespace=split,
                 attempt=attempt,
                 forbidden_signatures=used_signatures,
+                forbidden_base_signatures=forbidden_bases,
+                require_unique_bases=require_unique_bases,
             ):
                 complete = False
                 break
@@ -270,6 +294,12 @@ def _construct_split(
                     break
                 used_signatures.update(signatures)
         if not complete:
+            continue
+        if require_unique_bases:
+            base_signatures = [_base_signature(row) for row in rows]
+            if len(base_signatures) != len(set(base_signatures)):
+                continue
+        if any(_base_signature(row) in forbidden_bases for row in rows):
             continue
 
         for row in rows:
@@ -341,16 +371,34 @@ def build_pilot_selection_manifest(
     if len(universe_by_signature) != len(universe):
         raise PilotSelectionError("candidate universe identities are not unique")
 
+    require_unique_holdout_bases = bool(selection["require_unique_holdout_bases"])
+    require_base_disjoint_splits = bool(selection["require_base_disjoint_splits"])
     holdout_rows = _construct_split(
-        _split_targets(config, "holdout"), seed=seed, split="holdout"
+        _split_targets(config, "holdout"),
+        seed=seed,
+        split="holdout",
+        require_unique_bases=require_unique_holdout_bases,
     )
     holdout_signatures = {_candidate_signature(row) for row in holdout_rows}
+    holdout_base_signatures = {_base_signature(row) for row in holdout_rows}
+    if require_unique_holdout_bases and len(holdout_base_signatures) != len(holdout_rows):
+        raise PilotSelectionError("holdout selection must use distinct base realizations")
+
     development_rows = _construct_split(
         _split_targets(config, "development"),
         seed=seed,
         split="development",
         forbidden_signatures=holdout_signatures,
+        forbidden_base_signatures=(
+            holdout_base_signatures if require_base_disjoint_splits else None
+        ),
     )
+    development_base_signatures = {_base_signature(row) for row in development_rows}
+    overlap = development_base_signatures & holdout_base_signatures
+    if require_base_disjoint_splits and overlap:
+        raise PilotSelectionError(
+            "development and holdout selections must not share base realizations"
+        )
 
     entries: list[dict[str, Any]] = []
     for split, rows in (("development", development_rows), ("holdout", holdout_rows)):
@@ -396,6 +444,11 @@ def build_pilot_selection_manifest(
         "split_counts": {
             "development": len(development),
             "holdout": len(holdout),
+        },
+        "base_isolation": {
+            "development_unique_base_count": len(development_base_signatures),
+            "holdout_unique_base_count": len(holdout_base_signatures),
+            "cross_split_base_overlap_count": len(overlap),
         },
         "coverage": {
             "overall_marginals": _marginals(entries),

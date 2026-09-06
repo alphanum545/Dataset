@@ -11,6 +11,7 @@ from generator.config import load_config
 from generator.dax import normalize_dax
 from generator.exact import ceil_div
 from generator.instance import build_base_instance
+from generator.network import resource_route_metrics
 from generator.schedule import (
     ScheduleEvaluationError,
     build_schedule,
@@ -88,6 +89,25 @@ def _assignment(schedule: dict, task_id: str) -> dict:
     return next(item for item in schedule["assignments"] if item["task_id"] == task_id)
 
 
+def _communication(instance: dict, edge_id: str, source: str, target: str) -> dict[str, int]:
+    parent, child = edge_id.split("->", 1)
+    dependency = next(
+        item
+        for item in instance["dependencies"]
+        if item["parent"] == parent and item["child"] == child
+    )
+    resource_tiers = {
+        resource["resource_id"]: resource["tier"] for resource in instance["resources"]
+    }
+    return resource_route_metrics(
+        instance["network"],
+        resource_tiers,
+        source_resource_id=source,
+        target_resource_id=target,
+        data_bits=dependency["data_bits"],
+    )
+
+
 def _resign(instance: dict, schedule: dict) -> None:
     schedule["schedule_id"] = canonical_schedule_id(instance, schedule["assignments"])
     schedule["schedule_sha256"] = content_sha256(
@@ -130,7 +150,7 @@ def test_same_resource_dependencies_have_zero_communication():
     assert evaluation.schedule["network_energy_pj"] == 0
 
 
-def test_same_tier_different_resources_use_the_materialized_route():
+def test_same_tier_different_resources_use_the_derived_route():
     instance = _chain_instance()
     evaluation = build_schedule(
         instance,
@@ -138,8 +158,9 @@ def test_same_tier_different_resources_use_the_materialized_route():
         resource_assignments={"A": "iot-001", "B": "iot-002", "C": "fog-001"},
     )
     parent = _assignment(evaluation.schedule, "A")
-    expected = instance["communication"]["A->B"]["iot-001|iot-002"]
+    expected = _communication(instance, "A->B", "iot-001", "iot-002")
 
+    assert "communication" not in instance
     assert expected["communication_time_us"] > 0
     assert evaluation.dependency_arrival_us["A->B"] == (
         parent["end_us"] + expected["communication_time_us"]
@@ -161,22 +182,18 @@ def test_latest_parent_arrival_controls_join_start_across_tiers():
         edge: evaluation.dependency_arrival_us[edge]
         for edge in ("A->C", "B->C")
     }
+    expected = [
+        _communication(instance, "A->C", "iot-001", "fog-001"),
+        _communication(instance, "B->C", "cloud-001", "fog-001"),
+    ]
 
     assert child["start_us"] == max(arrivals.values())
     assert evaluation.task_dependency_ready_us["C"] == max(arrivals.values())
     assert evaluation.communication_time_us == sum(
-        instance["communication"][edge][pair]["communication_time_us"]
-        for edge, pair in (
-            ("A->C", "iot-001|fog-001"),
-            ("B->C", "cloud-001|fog-001"),
-        )
+        item["communication_time_us"] for item in expected
     )
     assert evaluation.schedule["network_energy_pj"] == sum(
-        instance["communication"][edge][pair]["communication_energy_pj"]
-        for edge, pair in (
-            ("A->C", "iot-001|fog-001"),
-            ("B->C", "cloud-001|fog-001"),
-        )
+        item["communication_energy_pj"] for item in expected
     )
 
 
@@ -386,6 +403,7 @@ def test_frozen_montage_60_builds_and_validates_on_real_data():
     )
     validated = validate_schedule(instance, evaluation.schedule)
 
+    assert "communication" not in instance
     assert len(evaluation.schedule["assignments"]) == 60
     assert validated.schedule == evaluation.schedule
     assert evaluation.schedule["network_energy_pj"] == 0

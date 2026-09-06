@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import load_config
 from .dax import normalize_dax
 from .instance import build_base_instance
+from .materialize import materialize_pilot_dataset
 from .pilot import build_pilot_selection_manifest
 from .reference_schedulers import build_calibration_result
 
@@ -54,6 +55,18 @@ def build_parser() -> argparse.ArgumentParser:
     calibration.add_argument("--config", required=True)
     calibration.add_argument("--base-instance", required=True)
     calibration.add_argument("--output", required=True)
+
+    materialize = sub.add_parser(
+        "materialize-pilot",
+        help="Materialize the exact frozen 200-input pilot with calibration and joint QoS",
+    )
+    materialize.add_argument("--config", required=True)
+    materialize.add_argument("--source-manifest", required=True)
+    materialize.add_argument("--pilot-selection", required=True)
+    materialize.add_argument("--source-root", required=True)
+    materialize.add_argument("--output-root", required=True)
+    materialize.add_argument("--manifest", required=True)
+    materialize.add_argument("--generator-commit-sha", required=True)
     return parser
 
 
@@ -85,6 +98,31 @@ def main(argv: list[str] | None = None) -> int:
         k = int(config["budget"]["calibration"]["tradeoff_solutions"])
         result = build_calibration_result(instance, k=k)
         _write_json(Path(args.output), result)
+        return 0
+
+    if args.command == "materialize-pilot":
+        from validation.semantic import validate_pilot_selection
+
+        source_manifest = json.loads(
+            Path(args.source_manifest).read_text(encoding="utf-8")
+        )
+        selection_manifest = json.loads(
+            Path(args.pilot_selection).read_text(encoding="utf-8")
+        )
+        validate_pilot_selection(
+            selection_manifest,
+            config=config,
+            source_manifest=source_manifest,
+        )
+        manifest = materialize_pilot_dataset(
+            config,
+            source_manifest,
+            selection_manifest,
+            source_root=Path(args.source_root),
+            output_root=Path(args.output_root),
+            generator_commit_sha=args.generator_commit_sha,
+        )
+        _write_json(Path(args.manifest), manifest)
         return 0
 
     workflow = json.loads(Path(args.normalized_workflow).read_text(encoding="utf-8"))

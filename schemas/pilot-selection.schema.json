@@ -15,6 +15,7 @@
     "candidate_universe_sha256",
     "selected_count",
     "split_counts",
+    "base_isolation",
     "coverage",
     "entries",
     "content_sha256"
@@ -29,7 +30,7 @@
       "required": ["selector_id", "selector_version", "seed", "construction_attempts"],
       "properties": {
         "selector_id": {"$ref": "common.schema.json#/$defs/identifier"},
-        "selector_version": {"type": "integer", "minimum": 1},
+        "selector_version": {"const": 2},
         "seed": {"type": "integer", "minimum": 0},
         "construction_attempts": {"type": "integer", "minimum": 1}
       }
@@ -46,6 +47,20 @@
       "properties": {
         "development": {"const": 160},
         "holdout": {"const": 40}
+      }
+    },
+    "base_isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "development_unique_base_count",
+        "holdout_unique_base_count",
+        "cross_split_base_overlap_count"
+      ],
+      "properties": {
+        "development_unique_base_count": {"type": "integer", "minimum": 1, "maximum": 160},
+        "holdout_unique_base_count": {"const": 40},
+        "cross_split_base_overlap_count": {"const": 0}
       }
     },
     "coverage": {

@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/pilot-materialization.schema.json",
+  "title": "Frozen pilot materialization manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "materialization_version",
+    "selection_id",
+    "selection_sha256",
+    "dataset_version",
+    "generator_commit_sha",
+    "configuration_sha256",
+    "source_manifest_sha256",
+    "base_instance_count",
+    "calibration_count",
+    "instance_count",
+    "split_counts",
+    "dimensions",
+    "base_entries",
+    "calibration_entries",
+    "entries",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "materialization_version": {"const": "pilot_materialization_v1"},
+    "selection_id": {"$ref": "common.schema.json#/$defs/identifier"},
+    "selection_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "dataset_version": {"$ref": "common.schema.json#/$defs/identifier"},
+    "generator_commit_sha": {"$ref": "common.schema.json#/$defs/gitSha"},
+    "configuration_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "source_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "base_instance_count": {"type": "integer", "minimum": 1},
+    "calibration_count": {"type": "integer", "minimum": 1},
+    "instance_count": {"const": 200},
+    "split_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "holdout"],
+      "properties": {
+        "development": {"const": 160},
+        "holdout": {"const": 40}
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "families",
+        "task_counts",
+        "replicates",
+        "resource_scales",
+        "scenario_profiles",
+        "qos_profiles"
+      ],
+      "properties": {
+        "families": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/family"}},
+        "task_counts": {"type": "array", "uniqueItems": true, "items": {"enum": [60, 100, 200, 400, 600, 800, 1000]}},
+        "replicates": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/replicate"}},
+        "resource_scales": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/resourceScale"}},
+        "scenario_profiles": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/scenarioProfile"}},
+        "qos_profiles": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/qosProfile"}}
+      }
+    },
+    "base_entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/baseEntry"}
+    },
+    "calibration_entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/calibrationEntry"}
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 200,
+      "maxItems": 200,
+      "items": {"$ref": "#/$defs/instanceEntry"}
+    },
+    "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+  },
+  "$defs": {
+    "baseEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_instance_id", "path", "sha256"],
+      "properties": {
+        "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "path": {"type": "string", "pattern": "^base/[a-z0-9_-]+\\.json$"},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "calibrationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_instance_id", "path", "sha256", "candidate_set_sha256"],
+      "properties": {
+        "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "path": {"type": "string", "pattern": "^calibration/[a-z0-9_-]+\\.json$"},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "candidate_set_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "instanceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "candidate_id",
+        "base_instance_id",
+        "split",
+        "path",
+        "sha256",
+        "family",
+        "target_task_count",
+        "replicate_id",
+        "source_sha256",
+        "resource_scale",
+        "scenario_profile",
+        "qos_profile",
+        "ifc_realization_seed"
+      ],
+      "properties": {
+        "instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "candidate_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "split": {"enum": ["development", "holdout"]},
+        "path": {"type": "string", "pattern": "^instances/(development|holdout)/[a-z0-9_-]+\\.json$"},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "family": {"$ref": "common.schema.json#/$defs/family"},
+        "target_task_count": {"enum": [60, 100, 200, 400, 600, 800, 1000]},
+        "replicate_id": {"$ref": "common.schema.json#/$defs/replicate"},
+        "source_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "resource_scale": {"$ref": "common.schema.json#/$defs/resourceScale"},
+        "scenario_profile": {"$ref": "common.schema.json#/$defs/scenarioProfile"},
+        "qos_profile": {"$ref": "common.schema.json#/$defs/qosProfile"},
+        "ifc_realization_seed": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ import heapq
 from typing import Any, Callable, Iterable, Mapping
 
 from .canonical import canonical_json_bytes
+from .network import resource_route_metrics
 from .schedule import ScheduleEvaluation, build_schedule
 
 
@@ -29,8 +30,10 @@ class ReferenceSchedulerError(ValueError):
 class _Graph:
     task_ids: tuple[str, ...]
     resource_ids: tuple[str, ...]
+    resource_tiers: dict[str, str]
     parents: dict[str, tuple[str, ...]]
     children: dict[str, tuple[str, ...]]
+    data_bits_by_edge: dict[str, int]
     topological_order: tuple[str, ...]
 
 
@@ -56,6 +59,9 @@ def _graph(instance: Mapping[str, Any]) -> _Graph:
     try:
         task_ids = tuple(task["task_id"] for task in instance["tasks"])
         resource_ids = tuple(resource["resource_id"] for resource in instance["resources"])
+        resource_tiers = {
+            resource["resource_id"]: resource["tier"] for resource in instance["resources"]
+        }
         dependencies = instance["dependencies"]
     except (KeyError, TypeError) as exc:
         raise ReferenceSchedulerError(f"invalid base instance: {exc}") from exc
@@ -63,9 +69,12 @@ def _graph(instance: Mapping[str, Any]) -> _Graph:
         raise ReferenceSchedulerError("base instance must contain unique tasks")
     if not resource_ids or len(resource_ids) != len(set(resource_ids)):
         raise ReferenceSchedulerError("base instance must contain unique resources")
+    if len(resource_tiers) != len(resource_ids):
+        raise ReferenceSchedulerError("base instance resource tiers are inconsistent")
 
     parents: dict[str, list[str]] = {task_id: [] for task_id in task_ids}
     children: dict[str, list[str]] = {task_id: [] for task_id in task_ids}
+    data_bits_by_edge: dict[str, int] = {}
     indegree = {task_id: 0 for task_id in task_ids}
     task_set = set(task_ids)
     for dependency in dependencies:
@@ -73,6 +82,15 @@ def _graph(instance: Mapping[str, Any]) -> _Graph:
         child = dependency["child"]
         if parent not in task_set or child not in task_set:
             raise ReferenceSchedulerError(f"dependency {parent!r}->{child!r} references an unknown task")
+        data_bits = dependency["data_bits"]
+        if not isinstance(data_bits, int) or isinstance(data_bits, bool) or data_bits < 0:
+            raise ReferenceSchedulerError(
+                f"dependency {parent!r}->{child!r} data_bits must be an exact integer >= 0"
+            )
+        edge_id = f"{parent}->{child}"
+        if edge_id in data_bits_by_edge:
+            raise ReferenceSchedulerError(f"duplicate dependency {edge_id!r}")
+        data_bits_by_edge[edge_id] = data_bits
         parents[child].append(parent)
         children[parent].append(child)
         indegree[child] += 1
@@ -98,10 +116,37 @@ def _graph(instance: Mapping[str, Any]) -> _Graph:
     return _Graph(
         task_ids=task_ids,
         resource_ids=resource_ids,
+        resource_tiers=resource_tiers,
         parents={key: tuple(value) for key, value in parents.items()},
         children={key: tuple(value) for key, value in children.items()},
+        data_bits_by_edge=data_bits_by_edge,
         topological_order=tuple(order),
     )
+
+
+def _communication_metrics(
+    instance: Mapping[str, Any],
+    graph: _Graph,
+    *,
+    parent: str,
+    child: str,
+    source_resource: str,
+    target_resource: str,
+) -> dict[str, int]:
+    edge_id = f"{parent}->{child}"
+    try:
+        return resource_route_metrics(
+            instance["network"],
+            graph.resource_tiers,
+            source_resource_id=source_resource,
+            target_resource_id=target_resource,
+            data_bits=graph.data_bits_by_edge[edge_id],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ReferenceSchedulerError(
+            f"cannot derive communication metrics for {edge_id!r} on "
+            f"{source_resource}|{target_resource}: {exc}"
+        ) from exc
 
 
 def _mean(values: Iterable[int | Fraction]) -> Fraction:
@@ -124,7 +169,14 @@ def _average_communication(instance: Mapping[str, Any], graph: _Graph) -> dict[s
         for child in graph.children[parent]:
             edge_id = f"{parent}->{child}"
             values = [
-                instance["communication"][edge_id][f"{source}|{target}"]["communication_time_us"]
+                _communication_metrics(
+                    instance,
+                    graph,
+                    parent=parent,
+                    child=child,
+                    source_resource=source,
+                    target_resource=target,
+                )["communication_time_us"]
                 for source in graph.resource_ids
                 for target in graph.resource_ids
                 if source != target
@@ -222,11 +274,14 @@ def _candidate_assignment(
             raise ReferenceSchedulerError(
                 f"task {task_id!r} considered before parent {parent!r}"
             ) from exc
-        edge_id = f"{parent}->{task_id}"
-        pair = f"{parent_assignment['resource_id']}|{resource_id}"
-        transfer_us = int(
-            instance["communication"][edge_id][pair]["communication_time_us"]
-        )
+        transfer_us = _communication_metrics(
+            instance,
+            graph,
+            parent=parent,
+            child=task_id,
+            source_resource=parent_assignment["resource_id"],
+            target_resource=resource_id,
+        )["communication_time_us"]
         ready_us = max(ready_us, int(parent_assignment["end_us"]) + transfer_us)
     intervals = intervals_by_resource.get(resource_id, ())
     start_us = _earliest_idle_slot(intervals, ready_us=ready_us, duration_us=duration_us)
@@ -318,15 +373,17 @@ def _optimistic_cost_table(
         for current_resource in graph.resource_ids:
             child_costs: list[int] = []
             for child in graph.children[task_id]:
-                edge_id = f"{task_id}->{child}"
                 best_child = min(
                     oct_table[child][child_resource]
                     + int(instance["execution_time_us"][child][child_resource])
-                    + int(
-                        instance["communication"][edge_id][
-                            f"{current_resource}|{child_resource}"
-                        ]["communication_time_us"]
-                    )
+                    + _communication_metrics(
+                        instance,
+                        graph,
+                        parent=task_id,
+                        child=child,
+                        source_resource=current_resource,
+                        target_resource=child_resource,
+                    )["communication_time_us"]
                     for child_resource in graph.resource_ids
                 )
                 child_costs.append(best_child)
@@ -635,7 +692,14 @@ def calibration_lower_bounds(instance: Mapping[str, Any]) -> dict[str, int]:
         for child in graph.children[parent]:
             edge_id = f"{parent}->{child}"
             fastest_communication[edge_id] = min(
-                int(instance["communication"][edge_id][f"{source}|{target}"]["communication_time_us"])
+                _communication_metrics(
+                    instance,
+                    graph,
+                    parent=parent,
+                    child=child,
+                    source_resource=source,
+                    target_resource=target,
+                )["communication_time_us"]
                 for source in graph.resource_ids
                 for target in graph.resource_ids
             )
