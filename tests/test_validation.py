@@ -244,7 +244,7 @@ def test_qos_instance_reconstructs_deadline_budget_and_joint_witness():
             "t_economical_us": 20,
             "time_gap_us": 9,
             "interpolation_numerator": 1,
-            "interpolation_denominator": 10,
+            "interpolation_denominator": 100,
             "deadline_us": 12,
             "deadline_range_degenerate": False,
         },

@@ -175,8 +175,10 @@ def test_qos_materialization_uses_exact_deadline_budget_and_joint_witness():
         calibration["anchors"]["t_economical_us"]
         - calibration["anchors"]["t_fast_us"]
     )
+    assert qos["deadline"]["interpolation_numerator"] == 1
+    assert qos["deadline"]["interpolation_denominator"] == 4
     assert qos["deadline"]["deadline_us"] == (
-        calibration["anchors"]["t_fast_us"] + (gap + 1) // 2
+        calibration["anchors"]["t_fast_us"] + (gap + 3) // 4
     )
     assert qos["budget"]["cost_floor_ref_ncu"] == qos[
         "joint_feasibility_witness"
