@@ -18,12 +18,10 @@ from generator.materialize import (
 from .base_instance import validate_base_instance
 from .calibration import validate_calibration_result_against_instance
 from .errors import BenchmarkValidationError
+from .pilot import validate_pilot_selection
+from .qos import validate_qos_instance
 from .schema import validate_schema
-from .semantic import (
-    validate_pilot_selection,
-    validate_qos_instance,
-    validate_schedule,
-)
+from .semantic import validate_schedule
 
 
 def _fail(message: str) -> None:
