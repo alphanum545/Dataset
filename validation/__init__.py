@@ -8,11 +8,11 @@ from .calibration import (
 from .errors import BenchmarkValidationError, SchemaValidationError
 from .materialization import validate_pilot_materialization_manifest
 from .pilot import validate_pilot_selection
+from .qos import validate_qos_instance
 from .semantic import (
     validate_dataset_manifest,
     validate_network,
     validate_normalized_workflow,
-    validate_qos_instance,
     validate_resources,
     validate_schedule,
     validate_source_manifest,
