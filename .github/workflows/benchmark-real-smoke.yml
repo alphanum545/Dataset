@@ -1,0 +1,160 @@
+name: Benchmark real frozen smoke
+
+on:
+  push:
+    branches:
+      - verification/benchmark-real-smoke
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check out exact benchmark source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://gitlab.com/chatgpt-workspace/ifc-scheduling-benchmark.git benchmark
+          git -C benchmark checkout --detach f86c6e48a1a5073d1e65212653539e5c6054c583
+          test "$(git -C benchmark rev-parse HEAD)" = "f86c6e48a1a5073d1e65212653539e5c6054c583"
+
+      - name: Install benchmark with pinned Dataset dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e './benchmark[test]'
+
+      - name: Download exact frozen pilot artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/pilot-materialization-v1-frozen.zip \
+            https://api.github.com/repos/alphanum545/Dataset/actions/artifacts/9984757541/zip
+          echo "1cc0f68376d0ad09f9eae89a24a4d45c626922665b061b82d4cf8d50dabb53e6  /tmp/pilot-materialization-v1-frozen.zip" | sha256sum -c -
+          mkdir -p /tmp/frozen-pilot
+          unzip -q /tmp/pilot-materialization-v1-frozen.zip -d /tmp/frozen-pilot
+
+      - name: Run exact 3 x 7 development smoke
+        working-directory: benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from collections import Counter, defaultdict
+          import json
+          from pathlib import Path
+
+          from experiment.dataset_binding import CURRENT_PILOT_BINDING
+          from experiment.dataset_loader import FrozenPilotDataset
+          from experiment.development_runner import (
+              FROZEN_PRIMARY_COMPARATOR_IDS,
+              build_primary_development_jobs,
+              run_development_batch,
+          )
+          from experiment.serialization import serialize_experiment_result
+
+          artifact_root = Path('/tmp/frozen-pilot')
+          dataset = FrozenPilotDataset.open(artifact_root)
+
+          assert dataset.binding == CURRENT_PILOT_BINDING
+          assert dataset.binding.dataset_artifact_sha256 == '1cc0f68376d0ad09f9eae89a24a4d45c626922665b061b82d4cf8d50dabb53e6'
+          assert dataset.binding.generator_commit_sha == '5266acbfb246a7354929330f1329227609ec1c06'
+          assert dataset.binding.development_instance_count == 160
+          assert dataset.binding.holdout_instance_count == 40
+
+          development_ids = dataset.development_instance_ids()
+          assert len(development_ids) == 160
+
+          jobs = build_primary_development_jobs(
+              dataset,
+              experiment_id='real-frozen-pilot-smoke-3x7-v1',
+              instance_limit=3,
+          )
+          assert len(jobs) == 21
+          assert {job.instance_id for job in jobs} == set(development_ids[:3])
+          assert {job.algorithm_id for job in jobs} == set(FROZEN_PRIMARY_COMPARATOR_IDS)
+          assert all(job.split == 'development' for job in jobs)
+
+          results = run_development_batch(dataset, jobs)
+          assert len(results) == 21
+          assert all(result.split == 'development' for result in results)
+          assert all(result.dataset_artifact_sha256 == CURRENT_PILOT_BINDING.dataset_artifact_sha256 for result in results)
+
+          serialized = [serialize_experiment_result(result) for result in results]
+          Path('/tmp/real-smoke-results.jsonl').write_text('\n'.join(serialized) + '\n', encoding='utf-8')
+
+          status_counts = Counter(result.status for result in results)
+          by_algorithm = defaultdict(Counter)
+          for result in results:
+              by_algorithm[result.algorithm_id][result.status] += 1
+
+          summary = {
+              'benchmark_commit': 'f86c6e48a1a5073d1e65212653539e5c6054c583',
+              'dataset_code_commit': CURRENT_PILOT_BINDING.dataset_code_commit_sha,
+              'generator_commit': CURRENT_PILOT_BINDING.generator_commit_sha,
+              'dataset_artifact_sha256': CURRENT_PILOT_BINDING.dataset_artifact_sha256,
+              'materialization_manifest_content_sha256': CURRENT_PILOT_BINDING.materialization_manifest_content_sha256,
+              'selected_development_instance_ids': list(development_ids[:3]),
+              'job_count': len(jobs),
+              'status_counts': dict(status_counts),
+              'algorithm_status_counts': {key: dict(value) for key, value in sorted(by_algorithm.items())},
+          }
+          Path('/tmp/real-smoke-summary.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          for result in results:
+              print(
+                  result.instance_id,
+                  result.algorithm_id,
+                  result.status,
+                  result.makespan_us,
+                  result.compute_cost_ncu,
+                  result.deadline_met,
+                  result.budget_met,
+                  result.joint_feasible,
+                  result.algorithm_runtime_ns,
+              )
+
+          if status_counts != Counter({'success': 21}):
+              failures = [
+                  {
+                      'instance_id': r.instance_id,
+                      'algorithm_id': r.algorithm_id,
+                      'status': r.status,
+                      'error_type': r.error_type,
+                      'error_message': r.error_message,
+                  }
+                  for r in results
+                  if r.status != 'success'
+              ]
+              print(json.dumps({'failures': failures}, indent=2, sort_keys=True))
+              raise SystemExit('real 3x7 smoke did not produce 21 successful records')
+          PY
+
+      - name: Upload development-only smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-real-frozen-smoke-3x7
+          path: |
+            /tmp/real-smoke-summary.json
+            /tmp/real-smoke-results.jsonl
+          if-no-files-found: error
+          retention-days: 7
