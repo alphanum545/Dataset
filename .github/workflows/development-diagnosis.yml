@@ -1,0 +1,86 @@
+name: Development scheduling diagnosis
+on:
+  push:
+    branches: [verification/development-diagnosis-v2-20260907]
+    paths:
+      - verification/investigate.py
+      - .github/workflows/development-diagnosis.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact benchmark and Dataset dependency
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://gitlab.com/chatgpt-workspace/ifc-scheduling-benchmark.git /tmp/benchmark
+          git -C /tmp/benchmark checkout --detach e9115b795576be720862f0cb8ff755a4c75db249
+          test "$(git -C /tmp/benchmark rev-parse HEAD)" = e9115b795576be720862f0cb8ff755a4c75db249
+          python -m pip install -e '/tmp/benchmark[test]'
+      - name: Acquire exact canonical compressed pilot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -o /tmp/pilot.zip https://api.github.com/repos/alphanum545/Dataset/actions/artifacts/9984757541/zip
+          echo '1cc0f68376d0ad09f9eae89a24a4d45c626922665b061b82d4cf8d50dabb53e6  /tmp/pilot.zip' | sha256sum -c -
+      - name: Replay development shard and audit failures
+        working-directory: /tmp/benchmark
+        run: python "$GITHUB_WORKSPACE/verification/investigate.py" --archive /tmp/pilot.zip --shard ${{ matrix.shard }} --shards 8 --output /tmp/diagnosis-shard
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ifc-diagnosis-shard-${{ matrix.shard }}
+          path: /tmp/diagnosis-shard/
+          retention-days: 14
+          if-no-files-found: error
+  aggregate:
+    needs: diagnose
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned benchmark
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://gitlab.com/chatgpt-workspace/ifc-scheduling-benchmark.git /tmp/benchmark
+          git -C /tmp/benchmark checkout --detach e9115b795576be720862f0cb8ff755a4c75db249
+          python -m pip install -e '/tmp/benchmark[test]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ifc-diagnosis-shard-*
+          path: /tmp/shards
+      - name: Require exact match with original 1120 AWS outcomes
+        working-directory: /tmp/benchmark
+        run: python "$GITHUB_WORKSPACE/verification/investigate.py" --aggregate /tmp/shards --output /tmp/final-diagnosis
+      - name: Print breakdown evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          print('GROUP_TABLES_START')
+          print(Path('/tmp/final-diagnosis/groups.json').read_text())
+          print('GROUP_TABLES_END')
+          print('ARTIFACT_INDEX_START')
+          print(Path('/tmp/final-diagnosis/artifact_index.json').read_text())
+          print('ARTIFACT_INDEX_END')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ifc-development-investigation-20260907
+          path: /tmp/final-diagnosis/
+          retention-days: 14
+          if-no-files-found: error
