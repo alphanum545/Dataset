@@ -17,18 +17,18 @@ jobs:
         run: |
           set -euo pipefail
           git clone --quiet https://gitlab.com/chatgpt-workspace/ifc-scheduling-benchmark.git benchmark
-          git -C benchmark checkout --detach e9115b795576be720862f0cb8ff755a4c75db249
-          test "$(git -C benchmark rev-parse HEAD)" = e9115b795576be720862f0cb8ff755a4c75db249
+          git -C benchmark checkout --detach 7bcefcf02642b2a69b2f03f02ca6aaeee3e28f1f
+          test "$(git -C benchmark rev-parse HEAD)" = 7bcefcf02642b2a69b2f03f02ca6aaeee3e28f1f
           mkdir /tmp/export
           cp -r benchmark /tmp/export/benchmark
           rm -rf /tmp/export/benchmark/.git
           mkdir /tmp/export/dataset
           cp -r dataset/generator dataset/validation dataset/config dataset/tests dataset/pyproject.toml dataset/AGENTS.md /tmp/export/dataset/
-          printf '%s\n' e9115b795576be720862f0cb8ff755a4c75db249 > /tmp/export/benchmark_commit.txt
+          printf '%s\n' 7bcefcf02642b2a69b2f03f02ca6aaeee3e28f1f > /tmp/export/benchmark_commit.txt
           printf '%s\n' 67489dc2f3009c394a0bc783181612fe6481efaf > /tmp/export/dataset_commit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: dcr-pinned-sources
+          name: dcr-implemented-pinned-sources
           path: /tmp/export/
-          retention-days: 7
+          retention-days: 14
           if-no-files-found: error
