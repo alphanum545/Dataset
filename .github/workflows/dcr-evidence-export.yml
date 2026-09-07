@@ -1,0 +1,47 @@
+name: DCR AWS evidence verification
+on:
+  push:
+    branches: [verification/dcr-v0-source-export-20260907]
+    paths:
+      - .github/workflows/dcr-evidence-export.yml
+      - verification/collect_dcr_v0.py
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::296725355277:role/research/dcr/ifc-dcr-v0-evidence-export-20260907
+          aws-region: ap-south-2
+          role-session-name: dcr-evidence-verification
+          role-duration-seconds: 900
+      - name: Install exact implementation and run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://gitlab.com/chatgpt-workspace/ifc-scheduling-benchmark.git /tmp/benchmark
+          git -C /tmp/benchmark checkout --detach 7bcefcf02642b2a69b2f03f02ca6aaeee3e28f1f
+          test "$(git -C /tmp/benchmark rev-parse HEAD)" = 7bcefcf02642b2a69b2f03f02ca6aaeee3e28f1f
+          python -m pip install -e '/tmp/benchmark[test,aws]'
+          cd /tmp/benchmark
+          python -m pytest --junitxml=/tmp/tests.xml
+      - name: Verify completed AWS schedules, immutable inputs and paired runtime samples
+        working-directory: /tmp/benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$GITHUB_WORKSPACE/verification/collect_dcr_v0.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dcr-v0-complete-execution-evidence
+          path: /tmp/dcr-evidence/
+          retention-days: 14
+          if-no-files-found: error
