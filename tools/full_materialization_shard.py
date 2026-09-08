@@ -26,11 +26,11 @@ _TASK_WEIGHTS = {
     1000: 65,
 }
 _FAMILY_WEIGHTS = {
-    "CyberShake": 115,
-    "Montage": 105,
-    "Genome": 100,
-    "SIPHT": 90,
-    "LIGO": 90,
+    "cybershake": 115,
+    "montage": 105,
+    "genome": 100,
+    "sipht": 90,
+    "ligo": 90,
 }
 _SCALE_WEIGHTS = {"S01": 80, "S02": 100, "S03": 120}
 
@@ -40,11 +40,19 @@ class ShardError(ValueError):
 
 
 def _weight(candidate: Mapping[str, Any]) -> int:
-    return (
-        _TASK_WEIGHTS[int(candidate["target_task_count"])]
-        * _FAMILY_WEIGHTS[str(candidate["family"])]
-        * _SCALE_WEIGHTS[str(candidate["resource_scale"])]
-    )
+    task_count = int(candidate["target_task_count"])
+    family = str(candidate["family"]).casefold()
+    scale = str(candidate["resource_scale"])
+    try:
+        task_weight = _TASK_WEIGHTS[task_count]
+        family_weight = _FAMILY_WEIGHTS[family]
+        scale_weight = _SCALE_WEIGHTS[scale]
+    except KeyError as exc:
+        raise ShardError(
+            "unsupported balancing dimension: "
+            f"task_count={task_count}, family={family!r}, scale={scale!r}"
+        ) from exc
+    return task_weight * family_weight * scale_weight
 
 
 def build_shard_plan(
