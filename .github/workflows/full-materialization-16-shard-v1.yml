@@ -171,6 +171,7 @@ jobs:
           name: full-materialization-shard-${{ matrix.shard }}-${{ env.IMPLEMENTATION_SHA }}
           path: ${{ runner.temp }}/shard
           if-no-files-found: error
+          include-hidden-files: true
           compression-level: 6
           retention-days: 14
 
@@ -325,6 +326,7 @@ jobs:
           name: full-materialization-16-shard-generation-${{ env.IMPLEMENTATION_SHA }}
           path: ${{ runner.temp }}/merged
           if-no-files-found: error
+          include-hidden-files: true
           compression-level: 6
           retention-days: 14
 
