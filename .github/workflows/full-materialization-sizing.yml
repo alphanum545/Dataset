@@ -1,0 +1,95 @@
+name: full-materialization-sizing
+
+on:
+  push:
+    branches:
+      - research/full-materialization-sizing
+
+jobs:
+  representative-sizing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [montage, cybershake, ligo, sipht, genome]
+    steps:
+      - name: Checkout sizing branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Measure representative base and calibration cases
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/${FAMILY}-sizing.tsv"
+          printf 'family\ttasks\tscale\tbase_wall_s\tbase_max_rss_kb\tcal_wall_s\tcal_max_rss_kb\tbase_bytes\tcalibration_bytes\tcandidate_count\n' > "$report"
+          for spec in '60 S01' '400 S02' '1000 S03'; do
+            set -- $spec
+            size="$1"
+            scale="$2"
+            normalized="$RUNNER_TEMP/${FAMILY}-${size}-normalized.json"
+            base="$RUNNER_TEMP/${FAMILY}-${size}-base.json"
+            calibration="$RUNNER_TEMP/${FAMILY}-${size}-calibration.json"
+            base_time="$RUNNER_TEMP/${FAMILY}-${size}-base.time"
+            cal_time="$RUNNER_TEMP/${FAMILY}-${size}-cal.time"
+
+            python -m generator.cli normalize-dax \
+              --config config/benchmark-v1.yaml \
+              --dax "source_workflows/pegasus-bharathi-bb1f8d43/${FAMILY}/${size}/r01.dax" \
+              --family "$FAMILY" \
+              --task-count "$size" \
+              --replicate r01 \
+              --output "$normalized"
+
+            /usr/bin/time -f '%e\t%M' -o "$base_time" \
+              python -m generator.cli build-base-instance \
+                --config config/benchmark-v1.yaml \
+                --normalized-workflow "$normalized" \
+                --scale "$scale" \
+                --scenario balanced \
+                --seed 101 \
+                --output "$base"
+
+            /usr/bin/time -f '%e\t%M' -o "$cal_time" \
+              python -m generator.cli calibrate-instance \
+                --config config/benchmark-v1.yaml \
+                --base-instance "$base" \
+                --output "$calibration"
+
+            python -m validation.cli calibration-result \
+              --result "$calibration" \
+              --base-instance "$base" > "$RUNNER_TEMP/validation.json"
+
+            python - "$FAMILY" "$size" "$scale" "$base_time" "$cal_time" "$base" "$calibration" "$report" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          family, size, scale, base_time, cal_time, base_path, cal_path, report = sys.argv[1:]
+          base_wall, base_rss = Path(base_time).read_text().strip().split('\t')
+          cal_wall, cal_rss = Path(cal_time).read_text().strip().split('\t')
+          calibration = json.loads(Path(cal_path).read_text())
+          line = '\t'.join([
+              family,
+              size,
+              scale,
+              base_wall,
+              base_rss,
+              cal_wall,
+              cal_rss,
+              str(Path(base_path).stat().st_size),
+              str(Path(cal_path).stat().st_size),
+              str(len(calibration['candidates'])),
+          ])
+          with Path(report).open('a', encoding='utf-8') as handle:
+              handle.write(line + '\n')
+          PY
+          done
+          cat "$report"
