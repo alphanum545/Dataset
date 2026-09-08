@@ -1,0 +1,374 @@
+name: full-materialization-run-v1
+
+on:
+  push:
+    branches:
+      - research/full-materialization-run-v1
+    paths:
+      - .github/workflows/full-materialization-run-v1.yml
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  IMPLEMENTATION_SHA: af62a42be01cc91f0b5b553ff94faffdb06ddcee
+  CANONICAL_ARTIFACT_ID: "9984757541"
+  CANONICAL_ZIP_SIZE: "79244735"
+  CANONICAL_ZIP_SHA256: 1cc0f68376d0ad09f9eae89a24a4d45c626922665b061b82d4cf8d50dabb53e6
+  CANONICAL_MANIFEST_CONTENT_SHA256: 8cf3440804868703d79871ce6b089cf7b9440121a8ebece6d5c3f407624d5b13
+  CANONICAL_GENERATOR_SHA: 5266acbfb246a7354929330f1329227609ec1c06
+
+jobs:
+  generate:
+    name: generate-full-grid
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Checkout exact full-materialization implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMPLEMENTATION_SHA }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+
+      - name: Validate frozen source and selection inputs
+        run: |
+          python -m validation.cli source-manifest \
+            --manifest manifests/source-workflows-v1.json \
+            --source-root source_workflows
+          python -m validation.cli pilot-selection \
+            --manifest manifests/pilot-selection-v1.json \
+            --config config/benchmark-v1.yaml \
+            --source-manifest manifests/source-workflows-v1.json
+
+      - name: Recover and verify canonical frozen pilot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          canonical="$RUNNER_TEMP/canonical"
+          mkdir -p "$canonical"
+          zip="$RUNNER_TEMP/canonical-pilot.zip"
+          curl --fail --location --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CANONICAL_ARTIFACT_ID}/zip" \
+            -o "$zip"
+          actual_size="$(stat -c %s "$zip")"
+          actual_sha="$(sha256sum "$zip" | awk '{print $1}')"
+          test "$actual_size" = "$CANONICAL_ZIP_SIZE"
+          test "$actual_sha" = "$CANONICAL_ZIP_SHA256"
+          unzip -tqq "$zip"
+          unzip -q "$zip" -d "$canonical"
+          test -d "$canonical/pilot"
+          test -f "$canonical/pilot-materialization-v1.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          manifest = json.loads((Path(os.environ['RUNNER_TEMP']) / 'canonical' / 'pilot-materialization-v1.json').read_text())
+          assert manifest['content_sha256'] == os.environ['CANONICAL_MANIFEST_CONTENT_SHA256']
+          assert manifest['generator_commit_sha'] == os.environ['CANONICAL_GENERATOR_SHA']
+          assert manifest['base_instance_count'] == 199
+          assert manifest['calibration_count'] == 199
+          assert manifest['instance_count'] == 200
+          assert manifest['split_counts'] == {'development': 160, 'holdout': 40}
+          print(json.dumps({
+              'artifact_id': int(os.environ['CANONICAL_ARTIFACT_ID']),
+              'zip_size_bytes': int(os.environ['CANONICAL_ZIP_SIZE']),
+              'zip_sha256': os.environ['CANONICAL_ZIP_SHA256'],
+              'manifest_content_sha256': manifest['content_sha256'],
+              'generator_commit_sha': manifest['generator_commit_sha'],
+              'base_instance_count': manifest['base_instance_count'],
+              'calibration_count': manifest['calibration_count'],
+              'instance_count': manifest['instance_count'],
+              'split_counts': manifest['split_counts'],
+              'zip_integrity': 'passed',
+          }, sort_keys=True))
+          PY
+
+      - name: Materialize complete 2,835-input benchmark
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/release-bundle"
+          mkdir -p "$bundle/full" "$bundle/evidence"
+          canonical="$RUNNER_TEMP/canonical"
+          set +e
+          /usr/bin/time -v -o "$bundle/evidence/generation-time.txt" \
+            timeout --preserve-status --signal=TERM 320m \
+            python -m generator.cli materialize-full \
+              --config config/benchmark-v1.yaml \
+              --source-manifest manifests/source-workflows-v1.json \
+              --pilot-selection manifests/pilot-selection-v1.json \
+              --pilot-manifest "$canonical/pilot-materialization-v1.json" \
+              --source-root source_workflows \
+              --pilot-root "$canonical/pilot" \
+              --output-root "$bundle/full" \
+              --exposure-manifest "$bundle/full-exposure-v1.json" \
+              --manifest "$bundle/full-materialization-v1.json" \
+              --generator-commit-sha "$IMPLEMENTATION_SHA" \
+              --workers 1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "$bundle/evidence/generation-exit-code.txt"
+          exit "$rc"
+
+      - name: Verify full-grid accounting before transfer
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          bundle = Path(os.environ['RUNNER_TEMP']) / 'release-bundle'
+          manifest = json.loads((bundle / 'full-materialization-v1.json').read_text())
+          assert manifest['generator_commit_sha'] == os.environ['IMPLEMENTATION_SHA']
+          assert manifest['base_instance_count'] == 945
+          assert manifest['calibration_count'] == 945
+          assert manifest['instance_count'] == 2835
+          assert manifest['cohort_counts'] == {
+              'original_development': 160,
+              'development_sibling': 317,
+              'original_holdout': 40,
+              'holdout_sibling': 80,
+              'expansion_evaluation': 2238,
+          }
+          bp = Counter(x['provenance'] for x in manifest['base_entries'])
+          cp = Counter(x['provenance'] for x in manifest['calibration_entries'])
+          ip = Counter(x['provenance'] for x in manifest['entries'])
+          assert bp == {'reused_pilot': 199, 'generated_full': 746}
+          assert cp == {'reused_pilot': 199, 'generated_full': 746}
+          assert ip == {'reused_pilot': 200, 'generated_full': 2635}
+          complete = list((bundle / 'full' / '.complete').glob('*.json'))
+          assert len(complete) == 945
+          files = [p for p in (bundle / 'full').rglob('*') if p.is_file()]
+          summary = {
+              'status': 'generation-complete',
+              'generator_commit_sha': manifest['generator_commit_sha'],
+              'base_instance_count': manifest['base_instance_count'],
+              'calibration_count': manifest['calibration_count'],
+              'instance_count': manifest['instance_count'],
+              'cohort_counts': manifest['cohort_counts'],
+              'base_provenance_counts': dict(bp),
+              'calibration_provenance_counts': dict(cp),
+              'instance_provenance_counts': dict(ip),
+              'completion_marker_count': len(complete),
+              'dataset_tree_file_count_including_markers': len(files),
+              'dataset_tree_bytes_including_markers': sum(p.stat().st_size for p in files),
+          }
+          (bundle / 'evidence' / 'generation-summary.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + '\n'
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload generation state for validation or recovery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-materialization-generation-${{ env.IMPLEMENTATION_SHA }}
+          path: ${{ runner.temp }}/release-bundle
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 14
+
+  validate-and-package:
+    name: validate-and-package-full-grid
+    needs: generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - name: Checkout exact full-materialization implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMPLEMENTATION_SHA }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+
+      - name: Download generated full grid
+        uses: actions/download-artifact@v4
+        with:
+          name: full-materialization-generation-${{ env.IMPLEMENTATION_SHA }}
+          path: ${{ runner.temp }}/release-bundle
+
+      - name: Recover and verify canonical frozen pilot again
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          canonical="$RUNNER_TEMP/canonical"
+          mkdir -p "$canonical"
+          zip="$RUNNER_TEMP/canonical-pilot.zip"
+          curl --fail --location --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CANONICAL_ARTIFACT_ID}/zip" \
+            -o "$zip"
+          test "$(stat -c %s "$zip")" = "$CANONICAL_ZIP_SIZE"
+          test "$(sha256sum "$zip" | awk '{print $1}')" = "$CANONICAL_ZIP_SHA256"
+          unzip -tqq "$zip"
+          unzip -q "$zip" -d "$canonical"
+          test -d "$canonical/pilot"
+          test -f "$canonical/pilot-materialization-v1.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          manifest = json.loads((Path(os.environ['RUNNER_TEMP']) / 'canonical' / 'pilot-materialization-v1.json').read_text())
+          assert manifest['content_sha256'] == os.environ['CANONICAL_MANIFEST_CONTENT_SHA256']
+          assert manifest['generator_commit_sha'] == os.environ['CANONICAL_GENERATOR_SHA']
+          PY
+
+      - name: Fully validate the 945/945/2,835 release
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/release-bundle"
+          canonical="$RUNNER_TEMP/canonical"
+          /usr/bin/time -v -o "$bundle/evidence/validation-time.txt" \
+            python -m validation.cli full-materialization \
+              --manifest "$bundle/full-materialization-v1.json" \
+              --exposure-manifest "$bundle/full-exposure-v1.json" \
+              --dataset-root "$bundle/full" \
+              --config config/benchmark-v1.yaml \
+              --source-manifest manifests/source-workflows-v1.json \
+              --pilot-selection manifests/pilot-selection-v1.json \
+              --pilot-manifest "$canonical/pilot-materialization-v1.json" \
+              --pilot-root "$canonical/pilot" \
+              --source-root source_workflows \
+            | tee "$bundle/evidence/validation-result.json"
+
+      - name: Produce aggregate validation and sizing evidence
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          bundle = Path(os.environ['RUNNER_TEMP']) / 'release-bundle'
+          root = bundle / 'full'
+          manifest = json.loads((bundle / 'full-materialization-v1.json').read_text())
+          validation = json.loads((bundle / 'evidence' / 'validation-result.json').read_text())
+          assert validation['status'] == 'passed'
+          deadline_degenerate = 0
+          budget_degenerate = 0
+          profile_counts = Counter()
+          family_counts = Counter()
+          task_counts = Counter()
+          scale_counts = Counter()
+          scenario_counts = Counter()
+          for entry in manifest['entries']:
+              data = json.loads((root / entry['path']).read_text())
+              deadline_degenerate += int(data['deadline']['deadline_range_degenerate'])
+              budget_degenerate += int(data['budget']['budget_range_degenerate'])
+              profile_counts[entry['qos_profile']] += 1
+              family_counts[entry['family']] += 1
+              task_counts[str(entry['target_task_count'])] += 1
+              scale_counts[entry['resource_scale']] += 1
+              scenario_counts[entry['scenario_profile']] += 1
+          release_files = [p for p in root.rglob('*') if p.is_file() and '.complete' not in p.parts]
+          marker_files = list((root / '.complete').glob('*.json'))
+          summary = {
+              'status': 'validated',
+              'base_instance_count': manifest['base_instance_count'],
+              'calibration_count': manifest['calibration_count'],
+              'instance_count': manifest['instance_count'],
+              'cohort_counts': manifest['cohort_counts'],
+              'deadline_degenerate_count': deadline_degenerate,
+              'budget_degenerate_count': budget_degenerate,
+              'qos_profile_counts': dict(sorted(profile_counts.items())),
+              'family_counts': dict(sorted(family_counts.items())),
+              'task_count_profile_counts': dict(sorted(task_counts.items(), key=lambda x: int(x[0]))),
+              'resource_scale_counts': dict(sorted(scale_counts.items())),
+              'scenario_counts': dict(sorted(scenario_counts.items())),
+              'completion_marker_count': len(marker_files),
+              'release_file_count_excluding_markers': len(release_files),
+              'release_raw_bytes_excluding_markers': sum(p.stat().st_size for p in release_files),
+          }
+          assert summary['qos_profile_counts'] == {'moderate': 945, 'relaxed': 945, 'tight': 945}
+          assert all(v == 567 for v in summary['family_counts'].values())
+          assert all(v == 405 for v in summary['task_count_profile_counts'].values())
+          assert summary['resource_scale_counts'] == {'S01': 945, 'S02': 945, 'S03': 945}
+          assert summary['scenario_counts'] == {'balanced': 945, 'compute_constrained': 945, 'network_constrained': 945}
+          assert summary['completion_marker_count'] == 945
+          (bundle / 'evidence' / 'release-summary.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + '\n'
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Build deterministic validated release archive
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/release-bundle"
+          archive="$RUNNER_TEMP/full-materialization-v1-${IMPLEMENTATION_SHA}.tar.gz"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude='full/.complete' \
+            -C "$bundle" -cf - \
+            full full-exposure-v1.json full-materialization-v1.json evidence \
+            | gzip -n -6 > "$archive"
+          sha="$(sha256sum "$archive" | awk '{print $1}')"
+          bytes="$(stat -c %s "$archive")"
+          python - "$sha" "$bytes" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+          sha, size = sys.argv[1:]
+          out = {
+              'materialization_version': 'full_materialization_v1',
+              'generator_commit_sha': os.environ['IMPLEMENTATION_SHA'],
+              'archive_name': f"full-materialization-v1-{os.environ['IMPLEMENTATION_SHA']}.tar.gz",
+              'archive_sha256': sha,
+              'archive_size_bytes': int(size),
+              'canonical_pilot_sha256': os.environ['CANONICAL_ZIP_SHA256'],
+              'canonical_pilot_artifact_id': int(os.environ['CANONICAL_ARTIFACT_ID']),
+              'validation_status': 'passed',
+          }
+          Path(os.environ['RUNNER_TEMP'], 'release-checksums.json').write_text(
+              json.dumps(out, indent=2, sort_keys=True) + '\n'
+          )
+          print(json.dumps(out, sort_keys=True))
+          PY
+
+      - name: Upload validated immutable release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-materialization-v1-${{ env.IMPLEMENTATION_SHA }}
+          path: |
+            ${{ runner.temp }}/full-materialization-v1-${{ env.IMPLEMENTATION_SHA }}.tar.gz
+            ${{ runner.temp }}/release-checksums.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload machine-readable manifests and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-materialization-v1-evidence-${{ env.IMPLEMENTATION_SHA }}
+          path: |
+            ${{ runner.temp }}/release-bundle/full-exposure-v1.json
+            ${{ runner.temp }}/release-bundle/full-materialization-v1.json
+            ${{ runner.temp }}/release-bundle/evidence
+            ${{ runner.temp }}/release-checksums.json
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
