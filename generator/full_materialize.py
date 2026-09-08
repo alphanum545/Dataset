@@ -54,6 +54,36 @@ def _safe(root: Path, relative: str) -> Path:
     return resolved
 
 
+def _load_completion_marker(
+    marker: Path,
+    *,
+    output_root: Path,
+    pilot_generator_sha: str,
+    generator_commit_sha: str,
+) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+        referenced = [payload["base"], payload["calibration"], *payload["instances"]]
+        provenance_ok = all(
+            item.get("provenance") in {"reused_pilot", "generated_full"}
+            and item.get("generator_commit_sha")
+            == (
+                pilot_generator_sha
+                if item.get("provenance") == "reused_pilot"
+                else generator_commit_sha
+            )
+            for item in referenced
+        )
+        files_ok = all(
+            _safe(output_root, item["path"]).is_file()
+            and _sha(_safe(output_root, item["path"])) == item["sha256"]
+            for item in referenced
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, FullMaterializationError):
+        return None
+    return payload if provenance_ok and files_ok else None
+
+
 def _verified_copy(src_root: Path, relative: str, expected_sha: str, dst: Path) -> str:
     src = _safe(src_root, relative)
     actual = _sha(src)
@@ -201,20 +231,13 @@ def materialize_full_dataset(
     def run_base(base_id: str, group: list[Mapping[str, Any]]) -> dict[str, Any]:
         marker = marker_root / f"{base_id}.json"
         if marker.is_file():
-            payload = json.loads(marker.read_text(encoding="utf-8"))
-            referenced = [payload["base"], payload["calibration"], *payload["instances"]]
-            pilot_generator_sha = str(pilot_manifest["generator_commit_sha"])
-            provenance_ok = all(
-                item.get("generator_commit_sha")
-                == (pilot_generator_sha if item.get("provenance") == "reused_pilot" else generator_commit_sha)
-                for item in referenced
+            payload = _load_completion_marker(
+                marker,
+                output_root=out,
+                pilot_generator_sha=str(pilot_manifest["generator_commit_sha"]),
+                generator_commit_sha=generator_commit_sha,
             )
-            files_ok = all(
-                _safe(out, item["path"]).is_file()
-                and _sha(_safe(out, item["path"])) == item["sha256"]
-                for item in referenced
-            )
-            if provenance_ok and files_ok:
+            if payload is not None:
                 return payload
 
         representative = sorted(group, key=lambda x: str(x["candidate_id"]))[0]
