@@ -6,6 +6,7 @@ on:
       - research/full-materialization-run-v1
     paths:
       - .github/workflows/full-materialization-16-shard-v1.yml
+      - tools/full_materialization_shard.py
 
 permissions:
   actions: read
