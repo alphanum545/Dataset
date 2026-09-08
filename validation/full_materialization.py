@@ -7,7 +7,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
 from generator.canonical import canonical_json_bytes, content_sha256
-from generator.full_materialize import COHORT_MANIFEST_VERSION, FULL_MATERIALIZATION_VERSION
+from generator.dax import normalize_dax
+from generator.full_materialize import FULL_MATERIALIZATION_VERSION, COHORT_MANIFEST_VERSION
+from generator.instance import build_base_instance
 from generator.materialize import build_qos_instance, selected_base_instance_id
 from generator.pilot import enumerate_candidates
 
@@ -17,8 +19,8 @@ from .errors import BenchmarkValidationError
 from .materialization import validate_pilot_materialization_manifest
 from .pilot import validate_pilot_selection
 from .qos import validate_qos_instance
-from .schema import validate_schema
 from .semantic import validate_schedule, validate_source_manifest
+from .schema import validate_schema
 
 
 def _fail(message: str) -> None:
@@ -156,6 +158,41 @@ def validate_full_materialization_manifest(
 
     exposure_by_id = {str(e["instance_id"]): e for e in exposure["entries"]}
     pilot_by_id = {str(e["instance_id"]): e for e in pilot_manifest["entries"]}
+    pilot_base_by_id = {str(e["base_instance_id"]): e for e in pilot_manifest["base_entries"]}
+    pilot_cal_by_id = {str(e["base_instance_id"]): e for e in pilot_manifest["calibration_entries"]}
+    full_base_by_id = {str(e["base_instance_id"]): e for e in base_entries}
+    full_cal_by_id = {str(e["base_instance_id"]): e for e in calibration_entries}
+    pilot_generator_sha = str(pilot_manifest["generator_commit_sha"])
+    full_generator_sha = str(manifest["generator_commit_sha"])
+
+    for base_id, frozen in pilot_base_by_id.items():
+        actual = full_base_by_id.get(base_id)
+        if actual is None or actual["path"] != frozen["path"] or actual["sha256"] != frozen["sha256"]:
+            _fail(f"reused pilot base changed in full release: {base_id}")
+        if actual.get("provenance") != "reused_pilot" or actual.get("generator_commit_sha") != pilot_generator_sha:
+            _fail(f"reused pilot base provenance is inconsistent: {base_id}")
+    for base_id, frozen in pilot_cal_by_id.items():
+        actual = full_cal_by_id.get(base_id)
+        if (
+            actual is None
+            or actual["path"] != frozen["path"]
+            or actual["sha256"] != frozen["sha256"]
+            or actual["candidate_set_sha256"] != frozen["candidate_set_sha256"]
+        ):
+            _fail(f"reused pilot calibration changed in full release: {base_id}")
+        if actual.get("provenance") != "reused_pilot" or actual.get("generator_commit_sha") != pilot_generator_sha:
+            _fail(f"reused pilot calibration provenance is inconsistent: {base_id}")
+
+    for base_id, actual in full_base_by_id.items():
+        expected_sha = pilot_generator_sha if base_id in pilot_base_by_id else full_generator_sha
+        expected_provenance = "reused_pilot" if base_id in pilot_base_by_id else "generated_full"
+        if actual.get("generator_commit_sha") != expected_sha or actual.get("provenance") != expected_provenance:
+            _fail(f"base provenance is inconsistent: {base_id}")
+    for base_id, actual in full_cal_by_id.items():
+        expected_sha = pilot_generator_sha if base_id in pilot_cal_by_id else full_generator_sha
+        expected_provenance = "reused_pilot" if base_id in pilot_cal_by_id else "generated_full"
+        if actual.get("generator_commit_sha") != expected_sha or actual.get("provenance") != expected_provenance:
+            _fail(f"calibration provenance is inconsistent: {base_id}")
     cohort_counts = Counter()
     for entry in entries:
         cid = str(entry["instance_id"])
@@ -174,6 +211,13 @@ def validate_full_materialization_manifest(
                 _fail(f"original split changed in full release: {cid}")
             if entry.get("provenance") != "reused_pilot":
                 _fail(f"pilot provenance missing for {cid}")
+            if entry.get("generator_commit_sha") != pilot_generator_sha:
+                _fail(f"pilot generator provenance changed for {cid}")
+        else:
+            if entry.get("provenance") != "generated_full":
+                _fail(f"expanded instance provenance missing for {cid}")
+            if entry.get("generator_commit_sha") != full_generator_sha:
+                _fail(f"expanded instance generator provenance is inconsistent for {cid}")
     if manifest.get("cohort_counts") != dict(sorted(cohort_counts.items())):
         _fail("full materialization cohort_counts do not match entries")
 
@@ -192,6 +236,31 @@ def validate_full_materialization_manifest(
         validate_base_instance(base)
         if base["metadata"]["base_instance_id"] != base_id:
             _fail(f"base identity mismatch inside artifact {base_id}")
+        if source_root is not None:
+            representative = grouped[base_id][0]
+            source_path = _safe(Path(source_root), str(representative["source_path"]))
+            try:
+                source_bytes = source_path.read_bytes()
+            except OSError as exc:
+                _fail(f"cannot read frozen source {representative['source_path']!r}: {exc}")
+            if sha256(source_bytes).hexdigest() != representative["source_sha256"]:
+                _fail(f"source checksum mismatch for base {base_id}")
+            workflow = normalize_dax(
+                source_path,
+                family=str(representative["family"]),
+                target_task_count=int(representative["target_task_count"]),
+                replicate_id=str(representative["replicate_id"]),
+                reference_mips=int(config["workflows"]["reference_mips"]),
+            )
+            regenerated = build_base_instance(
+                workflow,
+                config,
+                scale=str(representative["resource_scale"]),
+                scenario=str(representative["scenario_profile"]),
+                seed=int(representative["ifc_realization_seed"]),
+            )
+            if base != regenerated:
+                _fail(f"base does not deterministically regenerate from frozen source: {base_id}")
         calibration = _read(root, cal_by_id[base_id], "calibration")
         validate_calibration_result_against_instance(calibration, base)
         for candidate in grouped[base_id]:
