@@ -38,6 +38,7 @@ jobs:
             normalized="$RUNNER_TEMP/${FAMILY}-${size}-normalized.json"
             base="$RUNNER_TEMP/${FAMILY}-${size}-base.json"
             calibration="$RUNNER_TEMP/${FAMILY}-${size}-calibration.json"
+            validation="$RUNNER_TEMP/${FAMILY}-${size}-validation.json"
             base_time="$RUNNER_TEMP/${FAMILY}-${size}-base.time"
             cal_time="$RUNNER_TEMP/${FAMILY}-${size}-cal.time"
 
@@ -66,17 +67,17 @@ jobs:
 
             python -m validation.cli calibration-result \
               --result "$calibration" \
-              --base-instance "$base" > "$RUNNER_TEMP/validation.json"
+              --base-instance "$base" > "$validation"
 
-            python - "$FAMILY" "$size" "$scale" "$base_time" "$cal_time" "$base" "$calibration" "$report" <<'PY'
+            python - "$FAMILY" "$size" "$scale" "$base_time" "$cal_time" "$base" "$calibration" "$validation" "$report" <<'PY'
           import json
           from pathlib import Path
           import sys
 
-          family, size, scale, base_time, cal_time, base_path, cal_path, report = sys.argv[1:]
+          family, size, scale, base_time, cal_time, base_path, cal_path, validation_path, report = sys.argv[1:]
           base_wall, base_rss = Path(base_time).read_text().strip().split('\t')
           cal_wall, cal_rss = Path(cal_time).read_text().strip().split('\t')
-          calibration = json.loads(Path(cal_path).read_text())
+          validation = json.loads(Path(validation_path).read_text())
           line = '\t'.join([
               family,
               size,
@@ -87,7 +88,7 @@ jobs:
               cal_rss,
               str(Path(base_path).stat().st_size),
               str(Path(cal_path).stat().st_size),
-              str(len(calibration['candidates'])),
+              str(validation['candidate_count']),
           ])
           with Path(report).open('a', encoding='utf-8') as handle:
               handle.write(line + '\n')
