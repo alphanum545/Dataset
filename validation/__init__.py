@@ -6,6 +6,10 @@ from .calibration import (
     validate_calibration_result_against_instance,
 )
 from .errors import BenchmarkValidationError, SchemaValidationError
+from .full_materialization import (
+    validate_exposure_manifest,
+    validate_full_materialization_manifest,
+)
 from .materialization import validate_pilot_materialization_manifest
 from .pilot import validate_pilot_selection
 from .qos import validate_qos_instance
@@ -25,6 +29,8 @@ __all__ = [
     "validate_calibration_result",
     "validate_calibration_result_against_instance",
     "validate_dataset_manifest",
+    "validate_exposure_manifest",
+    "validate_full_materialization_manifest",
     "validate_network",
     "validate_normalized_workflow",
     "validate_pilot_materialization_manifest",

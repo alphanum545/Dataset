@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifc-workflow-benchmark.org/schemas/full-exposure.schema.json",
+  "title": "Full benchmark exposure/cohort manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "exposure_manifest_version", "dataset_version", "configuration_sha256", "source_manifest_sha256", "pilot_selection_sha256", "instance_count", "cohort_counts", "entries", "content_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "exposure_manifest_version": {"const": "full_exposure_v1"},
+    "dataset_version": {"$ref": "common.schema.json#/$defs/identifier"},
+    "configuration_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "source_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "pilot_selection_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "instance_count": {"const": 2835},
+    "cohort_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original_development", "development_sibling", "original_holdout", "holdout_sibling", "expansion_evaluation"],
+      "properties": {
+        "original_development": {"const": 160},
+        "development_sibling": {"const": 317},
+        "original_holdout": {"const": 40},
+        "holdout_sibling": {"const": 80},
+        "expansion_evaluation": {"const": 2238}
+      }
+    },
+    "entries": {"type": "array", "minItems": 2835, "maxItems": 2835, "items": {"$ref": "#/$defs/entry"}},
+    "content_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instance_id", "base_instance_id", "cohort", "original_split"],
+      "properties": {
+        "instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "base_instance_id": {"$ref": "common.schema.json#/$defs/identifier"},
+        "cohort": {"enum": ["original_development", "development_sibling", "original_holdout", "holdout_sibling", "expansion_evaluation"]},
+        "original_split": {"type": ["string", "null"], "enum": ["development", "holdout", null]}
+      }
+    }
+  }
+}

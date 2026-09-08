@@ -10,6 +10,7 @@ from generator.config import ConfigError, load_config
 
 from .calibration import validate_calibration_result_against_instance
 from .errors import BenchmarkValidationError
+from .full_materialization import validate_full_materialization_manifest
 from .materialization import validate_pilot_materialization_manifest
 from .pilot import validate_pilot_selection
 from .semantic import validate_source_manifest
@@ -57,6 +58,19 @@ def _parser() -> argparse.ArgumentParser:
     materialization.add_argument("--source-manifest", type=Path, required=True)
     materialization.add_argument("--pilot-selection", type=Path, required=True)
     materialization.add_argument("--source-root", type=Path, required=True)
+    full = subparsers.add_parser(
+        "full-materialization",
+        description="Validate the complete 2,835-input full release and all witnesses",
+    )
+    full.add_argument("--manifest", type=Path, required=True)
+    full.add_argument("--exposure-manifest", type=Path, required=True)
+    full.add_argument("--dataset-root", type=Path, required=True)
+    full.add_argument("--config", type=Path, required=True)
+    full.add_argument("--source-manifest", type=Path, required=True)
+    full.add_argument("--pilot-selection", type=Path, required=True)
+    full.add_argument("--pilot-manifest", type=Path, required=True)
+    full.add_argument("--pilot-root", type=Path, required=True)
+    full.add_argument("--source-root", type=Path, required=True)
     return parser
 
 
@@ -92,6 +106,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_manifest=source_manifest,
                 selection_manifest=selection_manifest,
                 dataset_root=args.dataset_root,
+                source_root=args.source_root,
+            )
+            output = {
+                "base_instance_count": manifest["base_instance_count"],
+                "calibration_count": manifest["calibration_count"],
+                "instance_count": manifest["instance_count"],
+                "manifest": str(args.manifest),
+                "status": "passed",
+            }
+        elif args.command == "full-materialization":
+            config = load_config(args.config)
+            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+            exposure = json.loads(
+                args.exposure_manifest.read_text(encoding="utf-8")
+            )
+            source_manifest = json.loads(
+                args.source_manifest.read_text(encoding="utf-8")
+            )
+            selection = json.loads(
+                args.pilot_selection.read_text(encoding="utf-8")
+            )
+            pilot_manifest = json.loads(
+                args.pilot_manifest.read_text(encoding="utf-8")
+            )
+            validate_full_materialization_manifest(
+                manifest,
+                exposure=exposure,
+                config=config,
+                source_manifest=source_manifest,
+                pilot_selection=selection,
+                pilot_manifest=pilot_manifest,
+                dataset_root=args.dataset_root,
+                pilot_root=args.pilot_root,
                 source_root=args.source_root,
             )
             output = {

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .config import load_config
 from .dax import normalize_dax
+from .full_materialize import build_exposure_manifest, materialize_full_dataset
 from .instance import build_base_instance
 from .materialize import materialize_pilot_dataset
 from .pilot import build_pilot_selection_manifest
@@ -67,6 +68,22 @@ def build_parser() -> argparse.ArgumentParser:
     materialize.add_argument("--output-root", required=True)
     materialize.add_argument("--manifest", required=True)
     materialize.add_argument("--generator-commit-sha", required=True)
+
+    full = sub.add_parser(
+        "materialize-full",
+        help="Materialize the complete frozen 2,835-input grid while preserving the canonical pilot",
+    )
+    full.add_argument("--config", required=True)
+    full.add_argument("--source-manifest", required=True)
+    full.add_argument("--pilot-selection", required=True)
+    full.add_argument("--pilot-manifest", required=True)
+    full.add_argument("--source-root", required=True)
+    full.add_argument("--pilot-root", required=True)
+    full.add_argument("--output-root", required=True)
+    full.add_argument("--manifest", required=True)
+    full.add_argument("--exposure-manifest", required=True)
+    full.add_argument("--generator-commit-sha", required=True)
+    full.add_argument("--workers", type=int, default=1)
     return parser
 
 
@@ -122,6 +139,57 @@ def main(argv: list[str] | None = None) -> int:
             output_root=Path(args.output_root),
             generator_commit_sha=args.generator_commit_sha,
         )
+        _write_json(Path(args.manifest), manifest)
+        return 0
+
+    if args.command == "materialize-full":
+        from validation.materialization import validate_pilot_materialization_manifest
+        from validation.semantic import validate_pilot_selection, validate_source_manifest
+
+        source_manifest = json.loads(
+            Path(args.source_manifest).read_text(encoding="utf-8")
+        )
+        selection_manifest = json.loads(
+            Path(args.pilot_selection).read_text(encoding="utf-8")
+        )
+        pilot_manifest = json.loads(
+            Path(args.pilot_manifest).read_text(encoding="utf-8")
+        )
+        validate_source_manifest(
+            source_manifest,
+            source_root=Path(args.source_root),
+            require_complete=True,
+        )
+        validate_pilot_selection(
+            selection_manifest,
+            config=config,
+            source_manifest=source_manifest,
+        )
+        validate_pilot_materialization_manifest(
+            pilot_manifest,
+            config=config,
+            source_manifest=source_manifest,
+            selection_manifest=selection_manifest,
+            dataset_root=Path(args.pilot_root),
+            source_root=Path(args.source_root),
+        )
+        frozen_exposure = build_exposure_manifest(
+            config, source_manifest, selection_manifest
+        )
+        _write_json(Path(args.exposure_manifest), frozen_exposure)
+        manifest, exposure = materialize_full_dataset(
+            config,
+            source_manifest,
+            selection_manifest,
+            pilot_manifest,
+            source_root=Path(args.source_root),
+            pilot_root=Path(args.pilot_root),
+            output_root=Path(args.output_root),
+            generator_commit_sha=args.generator_commit_sha,
+            workers=args.workers,
+        )
+        if exposure["content_sha256"] != frozen_exposure["content_sha256"]:
+            raise ValueError("exposure manifest changed after materialization began")
         _write_json(Path(args.manifest), manifest)
         return 0
 

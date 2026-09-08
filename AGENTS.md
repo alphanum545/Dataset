@@ -40,6 +40,19 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Generated data, manifests, schemas, and validation reports must agree on source checksum and instance identifiers/checksums.
 - Do not commit the full generated pilot payload to permanent storage until the complete 200-input materialization/validation gate reports the observed raw and compressed payload sizes and the storage choice is explicitly recorded.
 
+## Full-grid population invariants
+- `full_materialization_v1` is a separate release path over the existing v1-draft candidate identities. Do not change `pilot_selection.selected_count` to 2,835 and do not repurpose `materialize-pilot`.
+- The complete grid is exactly 945 base realizations and 2,835 QoS inputs, with exactly three QoS profiles per base.
+- `generator.full_materialize` owns full-grid orchestration, bounded per-base concurrency, atomic writes, resumable `.complete` markers, deterministic manifest reduction, pilot byte reuse, and per-artifact generator provenance. `validation.full_materialization` owns full-release structural and cross-artifact validation.
+- The outcome-independent `full_exposure_v1` manifest must be written before full-grid calibration begins. Its frozen cohort counts are 160 `original_development`, 317 `development_sibling`, 40 `original_holdout`, 80 `holdout_sibling`, and 2,238 `expansion_evaluation` inputs.
+- Additional QoS profiles of an exposed base are dependent observations; never present the full 2,835 as an independent unseen test set.
+- The 199 canonical pilot base/calibration pairs and all 200 pilot QoS artifacts must be reused only after checksum verification. Their paths and bytes must remain unchanged in the full release.
+- Reused artifacts must record the canonical pilot generator commit; newly generated artifacts must record the actual full-materialization generator commit. Never rewrite provenance so all artifacts appear to come from one generator revision.
+- A completion marker is only resumable evidence when every referenced file exists and matches its recorded SHA-256. Missing or corrupt generated work may be regenerated; a mismatching frozen-pilot artifact is a hard failure.
+- Full validation must deterministically regenerate each base from its frozen source DAX, validate every calibration against its base, reconstruct every QoS instance from calibration arithmetic, and re-evaluate every joint witness. Counts alone are insufficient evidence of completion.
+- Dataset construction may calibrate and validate protected inputs, but protected schedules, witnesses, and comparative outcomes remain sealed from the algorithm-development track until its protocol freeze. Difficulty of a proposed method is not grounds for changing the benchmark.
+- See `docs/FULL_MATERIALIZATION.md` for the release commands and operational contract.
+
 ## Implementation stack and verification
 - Generator runtime: Python 3.11 or newer.
 - Install development/test dependencies with `python -m pip install -e '.[test]'`.
@@ -50,6 +63,8 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Validate calibration schedules against the exact base instance with `python -m validation.cli calibration-result --result <calibration-result.json> --base-instance <base-instance.json>`.
 - Materialize the exact selected pilot with `python -m generator.cli materialize-pilot --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --pilot-selection manifests/pilot-selection-v1.json --source-root source_workflows --output-root <pilot-root> --manifest <pilot-manifest.json> --generator-commit-sha <40-char-sha>`.
 - Fully validate the materialized pilot with `python -m validation.cli pilot-materialization --manifest <pilot-manifest.json> --dataset-root <pilot-root> --config config/benchmark-v1.yaml --source-manifest manifests/source-workflows-v1.json --pilot-selection manifests/pilot-selection-v1.json --source-root source_workflows`.
+- Materialize the full grid only with `python -m generator.cli materialize-full ...`; it requires the canonical pilot root/manifest, an exposure-manifest destination, the actual full generator commit SHA, and an empirically bounded worker count. See `docs/FULL_MATERIALIZATION.md`.
+- Fully validate the complete release with `python -m validation.cli full-materialization ...`; supply the full and exposure manifests, canonical pilot root/manifest, frozen source root/manifest, and pilot selection.
 - Invoke the generator CLI with `python -m generator.cli`.
 - Validate the complete frozen source manifest and all referenced DAX checksums with `python -m validation.cli source-manifest --manifest manifests/source-workflows-v1.json --source-root source_workflows`.
 - Machine-readable artifact contracts use JSON Schema Draft 2020-12 under `schemas/`; `validation/` adds exact-type and cross-field semantic checks that JSON Schema alone cannot express.
@@ -69,11 +84,11 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - `docs/` - benchmark specification and methodology.
 - `config/` - committed generation/scenario configuration.
 - `source_workflows/` - immutable raw DAX source artifacts and source manifest.
-- `generator/` - deterministic IFC normalizer, generator, calibration, and pilot materialization utilities.
+- `generator/` - deterministic IFC normalizer, generator, calibration, and pilot/full materialization utilities.
 - `schemas/` - machine-readable schemas.
 - `validation/` - source, structural, semantic, reference, materialization, and freeze validators.
 - `datasets/` - generated candidate/frozen benchmark instances.
-- `manifests/` - source, selection, materialization, and instance provenance/checksums.
+- `manifests/` - source, selection, materialization, exposure, and instance provenance/checksums.
 - `tests/` - generator/calibration/validator tests and small non-benchmark fixtures.
 
 ## Workflow
