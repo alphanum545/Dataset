@@ -34,6 +34,7 @@ jobs:
             set -- $spec
             size="$1"
             scale="$2"
+            source_size="$(printf '%04d' "$size")"
             normalized="$RUNNER_TEMP/${FAMILY}-${size}-normalized.json"
             base="$RUNNER_TEMP/${FAMILY}-${size}-base.json"
             calibration="$RUNNER_TEMP/${FAMILY}-${size}-calibration.json"
@@ -42,7 +43,7 @@ jobs:
 
             python -m generator.cli normalize-dax \
               --config config/benchmark-v1.yaml \
-              --dax "source_workflows/pegasus-bharathi-bb1f8d43/${FAMILY}/${size}/r01.dax" \
+              --dax "source_workflows/pegasus-bharathi-bb1f8d43/${FAMILY}/${source_size}/r01.dax" \
               --family "$FAMILY" \
               --task-count "$size" \
               --replicate r01 \
