@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from hashlib import sha256
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import shutil
 from typing import Any, Mapping
@@ -18,6 +19,7 @@ from .reference_schedulers import build_calibration_result
 
 FULL_MATERIALIZATION_VERSION = "full_materialization_v1"
 COHORT_MANIFEST_VERSION = "full_exposure_v1"
+_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 class FullMaterializationError(ValueError):
@@ -160,6 +162,10 @@ def materialize_full_dataset(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if workers < 1:
         raise FullMaterializationError("workers must be >= 1")
+    if not _GIT_SHA.fullmatch(generator_commit_sha):
+        raise FullMaterializationError(
+            "generator_commit_sha must be a lowercase 40-character Git SHA"
+        )
     candidates = enumerate_candidates(config, source_manifest)
     if len(candidates) != 2835:
         raise FullMaterializationError(f"candidate universe has {len(candidates)} entries, expected 2835")
@@ -204,8 +210,21 @@ def materialize_full_dataset(
             _verified_copy(frozen_pilot, str(cmeta["path"]), str(cmeta["sha256"]), _safe(out, cpath))
             base = json.loads(_safe(out, bpath).read_text(encoding="utf-8"))
             calibration = json.loads(_safe(out, cpath).read_text(encoding="utf-8"))
-            base_entry = {"base_instance_id": base_id, "path": bpath, "sha256": str(bmeta["sha256"]), "provenance": "reused_pilot"}
-            cal_entry = {"base_instance_id": base_id, "path": cpath, "sha256": str(cmeta["sha256"]), "candidate_set_sha256": str(cmeta["candidate_set_sha256"]), "provenance": "reused_pilot"}
+            base_entry = {
+                "base_instance_id": base_id,
+                "path": bpath,
+                "sha256": str(bmeta["sha256"]),
+                "provenance": "reused_pilot",
+                "generator_commit_sha": str(pilot_manifest["generator_commit_sha"]),
+            }
+            cal_entry = {
+                "base_instance_id": base_id,
+                "path": cpath,
+                "sha256": str(cmeta["sha256"]),
+                "candidate_set_sha256": str(cmeta["candidate_set_sha256"]),
+                "provenance": "reused_pilot",
+                "generator_commit_sha": str(pilot_manifest["generator_commit_sha"]),
+            }
         else:
             src = _safe(source_path, str(representative["source_path"]))
             if _sha(src) != str(representative["source_sha256"]):
@@ -231,8 +250,21 @@ def materialize_full_dataset(
             cpath = f"calibration/{base_id}.json"
             bsha = _atomic_json(_safe(out, bpath), base)
             csha = _atomic_json(_safe(out, cpath), calibration)
-            base_entry = {"base_instance_id": base_id, "path": bpath, "sha256": bsha, "provenance": "generated_full"}
-            cal_entry = {"base_instance_id": base_id, "path": cpath, "sha256": csha, "candidate_set_sha256": str(calibration["candidate_set_sha256"]), "provenance": "generated_full"}
+            base_entry = {
+                "base_instance_id": base_id,
+                "path": bpath,
+                "sha256": bsha,
+                "provenance": "generated_full",
+                "generator_commit_sha": generator_commit_sha,
+            }
+            cal_entry = {
+                "base_instance_id": base_id,
+                "path": cpath,
+                "sha256": csha,
+                "candidate_set_sha256": str(calibration["candidate_set_sha256"]),
+                "provenance": "generated_full",
+                "generator_commit_sha": generator_commit_sha,
+            }
 
         instance_entries = []
         for candidate in sorted(group, key=lambda x: str(x["candidate_id"])):
@@ -243,12 +275,14 @@ def materialize_full_dataset(
                 rel = str(meta["path"])
                 digest = _verified_copy(frozen_pilot, rel, str(meta["sha256"]), _safe(out, rel))
                 provenance = "reused_pilot"
+                artifact_generator_commit_sha = str(pilot_manifest["generator_commit_sha"])
                 original_split = str(meta["split"])
             else:
                 rel = f"instances/expanded/{cid}.json"
                 instance = build_qos_instance(candidate, calibration, config)
                 digest = _atomic_json(_safe(out, rel), instance)
                 provenance = "generated_full"
+                artifact_generator_commit_sha = generator_commit_sha
                 original_split = None
             instance_entries.append({
                 "instance_id": cid,
@@ -266,6 +300,7 @@ def materialize_full_dataset(
                 "qos_profile": str(candidate["qos_profile"]),
                 "ifc_realization_seed": int(candidate["ifc_realization_seed"]),
                 "provenance": provenance,
+                "generator_commit_sha": artifact_generator_commit_sha,
             })
         payload = {"base": base_entry, "calibration": cal_entry, "instances": instance_entries}
         _atomic_json(marker, payload)
