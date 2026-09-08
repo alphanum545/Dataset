@@ -166,6 +166,15 @@ def materialize_full_dataset(
         raise FullMaterializationError(
             "generator_commit_sha must be a lowercase 40-character Git SHA"
         )
+    source_path = Path(source_root).resolve()
+    frozen_pilot = Path(pilot_root).resolve()
+    out = Path(output_root).resolve()
+    for immutable_root, label in ((source_path, "source_root"), (frozen_pilot, "pilot_root")):
+        if out == immutable_root or out in immutable_root.parents or immutable_root in out.parents:
+            raise FullMaterializationError(
+                f"output_root must not overlap immutable {label}"
+            )
+
     candidates = enumerate_candidates(config, source_manifest)
     if len(candidates) != 2835:
         raise FullMaterializationError(f"candidate universe has {len(candidates)} entries, expected 2835")
@@ -185,9 +194,6 @@ def materialize_full_dataset(
     if len(grouped) != 945 or any(len(v) != 3 for v in grouped.values()):
         raise FullMaterializationError("full grid must contain 945 bases with exactly three QoS profiles each")
 
-    source_path = Path(source_root)
-    frozen_pilot = Path(pilot_root)
-    out = Path(output_root)
     out.mkdir(parents=True, exist_ok=True)
     marker_root = out / ".complete"
     marker_root.mkdir(parents=True, exist_ok=True)
