@@ -197,7 +197,18 @@ def materialize_full_dataset(
         if marker.is_file():
             payload = json.loads(marker.read_text(encoding="utf-8"))
             referenced = [payload["base"], payload["calibration"], *payload["instances"]]
-            if all(_safe(out, item["path"]).is_file() and _sha(_safe(out, item["path"])) == item["sha256"] for item in referenced):
+            pilot_generator_sha = str(pilot_manifest["generator_commit_sha"])
+            provenance_ok = all(
+                item.get("generator_commit_sha")
+                == (pilot_generator_sha if item.get("provenance") == "reused_pilot" else generator_commit_sha)
+                for item in referenced
+            )
+            files_ok = all(
+                _safe(out, item["path"]).is_file()
+                and _sha(_safe(out, item["path"])) == item["sha256"]
+                for item in referenced
+            )
+            if provenance_ok and files_ok:
                 return payload
 
         representative = sorted(group, key=lambda x: str(x["candidate_id"]))[0]
