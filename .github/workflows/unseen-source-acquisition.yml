@@ -1,0 +1,168 @@
+name: unseen-source-acquisition
+
+# Acquires the 75 source DAGs of the ifc-unseen-v1 evaluation set (config/unseen-v1.yaml):
+#   35 new r04 replicates of the five v1 Bharathi families (checksum-distinct from r01-r03)
+#   40 WfCommons/WfChef DAGs of three new families (1000genome, srasearch, soykb; r01, r02)
+# On pull requests it acquires everything and uploads it for review only.
+# On manual dispatch it also pushes the frozen sources and manifest to a NEW branch
+# generated/source-workflows-unseen-v1-<sha8>; it never overwrites an existing branch.
+# No scheduler is run here.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - generator/unseen.py
+      - generator/wfformat.py
+      - config/unseen-v1.yaml
+      - .github/workflows/unseen-source-acquisition.yml
+
+env:
+  BHARATHI_COMMIT: bb1f8d43fe203f5c2cb209540531998af52000ea
+  WFCOMMONS_COMMIT: e5418e131e83b43197568a54e31e1cd49be093d3
+
+jobs:
+  bharathi:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [montage, cybershake, ligo, sipht, genome]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - name: Checkout and compile pinned WorkflowGenerator
+        run: |
+          git clone https://github.com/pegasus-isi/WorkflowGenerator.git "$RUNNER_TEMP/WorkflowGenerator"
+          git -C "$RUNNER_TEMP/WorkflowGenerator" checkout "$BHARATHI_COMMIT"
+          ant -f "$RUNNER_TEMP/WorkflowGenerator/bharathi/build.xml" compile
+      - name: Acquire r04 replicates
+        run: |
+          mkdir -p out/parts
+          python -m generator.unseen acquire-bharathi \
+            --upstream-dir "$RUNNER_TEMP/WorkflowGenerator/bharathi" \
+            --output-root out/source_workflows \
+            --manifest out/parts/bharathi-${{ matrix.family }}.json \
+            --family ${{ matrix.family }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unseen-bharathi-${{ matrix.family }}
+          path: out
+          retention-days: 14
+
+  wfcommons:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [1000genome, srasearch, soykb]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator and pinned WfCommons
+        run: |
+          python -m pip install -e '.[test]'
+          python -m pip install "wfcommons @ git+https://github.com/wfcommons/WfCommons.git@${WFCOMMONS_COMMIT}"
+          python -m pip freeze > out-pip-freeze.txt
+      - name: Acquire WfCommons workflows
+        run: |
+          mkdir -p out/parts
+          mv out-pip-freeze.txt out/parts/pip-freeze-${{ matrix.family }}.txt
+          python -m generator.unseen acquire-wfcommons \
+            --output-root out/source_workflows \
+            --manifest out/parts/wfcommons-${{ matrix.family }}.json \
+            --family ${{ matrix.family }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unseen-wfcommons-${{ matrix.family }}
+          path: out
+          retention-days: 14
+
+  merge:
+    needs: [bharathi, wfcommons]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install generator
+        run: python -m pip install -e '.[test]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unseen-*
+          path: parts-in
+          merge-multiple: true
+      - name: Merge, verify and summarize
+        run: |
+          mkdir -p source_workflows
+          cp -r parts-in/source_workflows/* source_workflows/
+          python -m generator.unseen merge-manifests \
+            --inputs "parts-in/parts/*.json" \
+            --output manifests/source-workflows-unseen-v1.json
+          python -m generator.unseen entries \
+            --source-manifest manifests/source-workflows-unseen-v1.json \
+            --output "$RUNNER_TEMP/entries.json"
+          python - <<'PY'
+          import json, hashlib, pathlib, collections
+          from generator.wfformat import normalize_source
+          m = json.load(open('manifests/source-workflows-unseen-v1.json'))
+          rows = collections.defaultdict(list)
+          for e in m['entries']:
+              p = pathlib.Path('source_workflows') / e['path']
+              assert hashlib.sha256(p.read_bytes()).hexdigest() == e['sha256'], e['path']
+              wf = normalize_source(p, family=e['family'], target_task_count=e['target_task_count'],
+                                    replicate_id=e['replicate_id'])
+              data = sum(d['data_bytes'] for d in wf['dependencies'])
+              rows[e['family']].append((e['target_task_count'], e['replicate_id'], len(wf['dependencies']),
+                                        round(data / 1e6, 1), e['acquisition_attempt']))
+          with open('summary.md', 'w') as f:
+              f.write(f"## Unseen sources: {m['artifact_count']} DAGs, manifest content_sha256 `{m['content_sha256']}`\n\n")
+              f.write('| Family | Tasks | Replicate | Edges | Edge data (MB) | Attempt |\n|---|---:|---|---:|---:|---:|\n')
+              for fam in sorted(rows):
+                  for r in sorted(rows[fam]):
+                      f.write(f'| {fam} | {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} |\n')
+          print(open('summary.md').read())
+          PY
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unseen-sources-merged
+          path: |
+            source_workflows/unseen-v1
+            manifests/source-workflows-unseen-v1.json
+            summary.md
+          retention-days: 30
+      - name: Push frozen sources to a new generated branch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          branch="generated/source-workflows-unseen-v1-${SOURCE_SHA:0:8}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing generated branch: $branch" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add source_workflows/unseen-v1 manifests/source-workflows-unseen-v1.json
+          git commit -m "data: acquire frozen ifc-unseen-v1 source workflows"
+          git push origin HEAD

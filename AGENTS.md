@@ -40,6 +40,9 @@ This repository is the canonical benchmark dataset for Intelligent Workflow Sche
 - Generated data, manifests, schemas, and validation reports must agree on source checksum and instance identifiers/checksums.
 - Do not commit the full generated pilot payload to permanent storage until the complete 200-input materialization/validation gate reports the observed raw and compressed payload sizes and the storage choice is explicitly recorded.
 
+- `ifc-unseen-v1` (`config/unseen-v1.yaml`, `docs/UNSEEN_WORKFLOWS_V1.md`) is an additive final-evaluation set of 75 new source DAGs (35 Bharathi r04 replicates checksum-distinct from r01-r03, and 40 WfCommons DAGs of 1000genome, srasearch and soykb). It never modifies v1 sources, manifests, the pilot selection or the holdout, reuses the unchanged v1 IFC model configuration, and must be frozen before any scheduler runs on it.
+- `generator.wfformat.normalize_wfformat` applies the v1 normalization rules to WfFormat JSON; `normalize_source` dispatches `.dax`/`.json`. Do not add format-specific scheduling semantics.
+
 ## Implementation stack and verification
 - Generator runtime: Python 3.11 or newer.
 - Install development/test dependencies with `python -m pip install -e '.[test]'`.
