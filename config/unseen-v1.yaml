@@ -12,8 +12,9 @@
 #   1. new_replicates: one new independent source replicate (r04) of each of the five v1
 #      Pegasus/Bharathi families at every v1 size, required to be checksum-distinct from
 #      the frozen r01-r03 artifacts. Same generator, same request policy as v1.
-#   2. new_families: three WfCommons/WfChef recipes whose DAG shapes differ from the five
-#      v1 families. WfCommons Montage and Epigenomics are excluded on purpose: they model
+#   2. new_families: four WfCommons/WfChef recipes whose DAG shapes differ from the five
+#      v1 families (1000genome, srasearch, blast at all seven sizes; soykb at the three
+#      sizes it can produce exactly). WfCommons Montage and Epigenomics are excluded on purpose: they model
 #      the same applications as v1 Montage and v1 Genome (the Bharathi GENOME model is the
 #      Epigenomics workflow).
 #
@@ -52,19 +53,28 @@ new_families:
     srasearch:
       recipe: SrasearchRecipe
       requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
+    blast:
+      recipe: BlastRecipe
+      requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
     soykb:
-      # The smallest SoyKB base graph has 98 tasks, so 60 cannot be produced exactly.
-      # It is omitted, never relabelled (same rule as the retired v1 Genome-50 size).
+      # Deep per-sample pipelines. At the pinned WfChef commit the base graph chosen for
+      # each request is deterministic (error-table method) and its duplicable
+      # microstructures have sizes {6,16}, {6,26} or {16}. An exact task count is
+      # therefore structurally reachable only for 200, 400 and 800 (60 is below the
+      # smallest base; 100, 600 and 1000 are not sums of the structure sizes). Unreachable
+      # sizes are omitted, never relabelled (same rule as the retired v1 Genome-50 size).
+      # Decided from recipe structure only, before any scheduler ran on any unseen DAG.
       recipe: SoykbRecipe
-      requested_task_counts: [100, 200, 400, 600, 800, 1000]
+      requested_task_counts: [200, 400, 800]
   replicates: [r01, r02]
   acquisition:
     # WfChef treats num_tasks as an upper bound on graph nodes INCLUDING its two
-    # synthetic SRC/DST nodes, which are dropped from the emitted workflow. The request
-    # therefore starts at target + 2 and only an emitted workflow whose parsed task count
-    # equals the target is accepted.
+    # synthetic SRC/DST nodes, which are dropped from the emitted workflow. Every attempt
+    # requests exactly target + 2 (a larger request can only overshoot) with a fresh
+    # seed, and only an emitted workflow whose parsed task count equals the target is
+    # accepted.
     request_offset: 2
-    attempts_per_request: 5
+    attempts_per_request: 100
     max_attempts_per_replicate: 100
     # Python `random` and NumPy global RNGs are seeded per attempt with
     # first 4 bytes of sha256("ifc-unseen-v1|<family>|<target>|<replicate>|<attempt>").

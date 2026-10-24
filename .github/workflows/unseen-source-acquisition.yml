@@ -1,8 +1,9 @@
 name: unseen-source-acquisition
 
-# Acquires the 75 source DAGs of the ifc-unseen-v1 evaluation set (config/unseen-v1.yaml):
+# Acquires the 83 source DAGs of the ifc-unseen-v1 evaluation set (config/unseen-v1.yaml):
 #   35 new r04 replicates of the five v1 Bharathi families (checksum-distinct from r01-r03)
-#   40 WfCommons/WfChef DAGs of three new families (1000genome, srasearch, soykb; r01, r02)
+#   48 WfCommons/WfChef DAGs of four new families (1000genome, srasearch, blast: 7 sizes;
+#      soykb: 200/400/800; replicates r01, r02)
 # On pull requests it acquires everything and uploads it for review only.
 # On manual dispatch it also pushes the frozen sources and manifest to a NEW branch
 # generated/source-workflows-unseen-v1-<sha8>; it never overwrites an existing branch.
@@ -64,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: [1000genome, srasearch, soykb]
+        family: [1000genome, srasearch, blast, soykb]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

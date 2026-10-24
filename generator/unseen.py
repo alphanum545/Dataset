@@ -115,7 +115,11 @@ def attempt_seed(family: str, target: int, replicate_id: str, attempt: int) -> i
 
 
 def _wfcommons_emit(recipe_name: str, num_tasks: int, seed: int) -> bytes:
-    """Generate one WfChef workflow with seeded global RNGs and return its JSON bytes."""
+    """Generate one WfChef workflow with seeded global RNGs and return its JSON bytes.
+
+    The seed fixes only this attempt's random choices; the frozen bytes (which also carry
+    a timestamp and random node identifiers) are the reproducibility anchor.
+    """
     import random
     import tempfile
 

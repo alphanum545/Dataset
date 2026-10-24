@@ -159,7 +159,7 @@ def test_wfcommons_acquisition_policy_exact_count_and_request_schedule():
 
 def test_repository_unseen_config():
     unseen = load_unseen_config("config/unseen-v1.yaml")
-    assert expected_source_count(unseen) == 5 * 7 * 1 + (7 + 7 + 6) * 2 == 75
+    assert expected_source_count(unseen) == 5 * 7 * 1 + (7 + 7 + 7 + 3) * 2 == 83
     assert "montage" not in unseen["new_families"]["families"]
     assert "epigenomics" not in unseen["new_families"]["families"]
 
@@ -205,5 +205,5 @@ def test_entries_full_factorial_and_identity(tmp_path):
 
 def test_merge_rejects_missing_or_duplicate_sources():
     unseen = load_unseen_config("config/unseen-v1.yaml")
-    with pytest.raises(Exception, match="expected 75"):
+    with pytest.raises(Exception, match="expected 83"):
         _manifest(unseen, [])

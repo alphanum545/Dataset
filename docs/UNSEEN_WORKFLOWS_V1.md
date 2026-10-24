@@ -11,18 +11,27 @@ It is **additive**. The v1 pilot (160 development + 40 holdout), the 105 v1 sour
 | Part | Source | Families | Sizes | Replicates | DAGs |
 |---|---|---|---|---|---:|
 | New replicates | Pegasus WorkflowGenerator, Bharathi, pinned `bb1f8d43` (same as v1) | montage, cybershake, ligo, sipht, genome | 60–1000 (7) | r04 | 35 |
-| New families | WfCommons/WfChef, pinned `e5418e13` | 1000genome, srasearch | 60–1000 (7) | r01, r02 | 28 |
-| | | soykb | 100–1000 (6) | r01, r02 | 12 |
-| **Total** | | | | | **75** |
+| New families | WfCommons/WfChef, pinned `e5418e13` | 1000genome, srasearch, blast | 60–1000 (7) | r01, r02 | 42 |
+| | | soykb | 200, 400, 800 | r01, r02 | 6 |
+| **Total** | | | | | **83** |
 
 - **r04 replicates** use the unchanged v1 request policy and exact-count rule. Each must be checksum-distinct from the frozen r01–r03 artifacts of the same family and size.
-- **New families** were chosen for shapes unlike the v1 five: a data-heavy wide merge (1000Genome), many independent chains (SRASearch) and deep per-sample pipelines (SoyKB). WfCommons Montage and Epigenomics are excluded on purpose, because they model the same applications as v1 Montage and v1 Genome; the Bharathi GENOME model is the Epigenomics workflow.
-- **SoyKB has no 60-task DAG.** Its smallest WfChef base graph has 98 tasks, so 60 cannot be produced exactly. The size is omitted, never relabelled, by the same rule that retired the v1 Genome-50 size.
+- **New families** were chosen for shapes unlike the v1 five:
+  - 1000Genome: a data-heavy wide merge;
+  - SRASearch: many independent chains;
+  - BLAST: split, a wide parallel stage, then concatenation;
+  - SoyKB: deep per-sample pipelines.
+- **Excluded on purpose:** WfCommons Montage and Epigenomics, because they model the same applications as v1 Montage and v1 Genome (the Bharathi GENOME model is the Epigenomics workflow).
+- **Exact sizes are decided by recipe structure alone.** At the pinned commit, WfChef deterministically picks a base graph for each request and grows it only by whole duplicable microstructures.
+  - SoyKB's microstructures have sizes {6, 16}, {6, 26} or {16}, so it can produce exactly 200, 400 and 800 tasks, but not 60 (below its smallest base), 100, 600 or 1000.
+  - Unreachable sizes are omitted, never relabelled, by the same rule that retired the v1 Genome-50 size.
+  - BLAST, which reaches all seven sizes, was added so the size grid stays complete.
+  - This was decided from the recipe structure after a first acquisition attempt failed at SoyKB-100, and before any scheduler ran on any unseen DAG.
 
 ## Acquisition rules for WfCommons (`generator.unseen`)
 
-1. WfChef's `num_tasks` is an upper bound on graph nodes, and the bound includes two synthetic SRC/DST nodes that are dropped on output. The request therefore starts at `target + 2`.
-2. Each request is tried 5 times, then increased by 1, for at most 100 attempts.
+1. WfChef's `num_tasks` is an upper bound on graph nodes, and the bound includes two synthetic SRC/DST nodes that are dropped on output. Every attempt therefore requests exactly `target + 2`; a larger request can only overshoot.
+2. There are at most 100 attempts per replicate, each with a fresh seed.
 3. Before every attempt the Python `random` and NumPy global RNGs are seeded with the first 4 bytes of `sha256("ifc-unseen-v1|<family>|<target>|<replicate>|<attempt>")`.
 4. An attempt is accepted only if:
    - the parsed task count equals the target exactly;
@@ -52,7 +61,7 @@ The instances are the full factorial of every source with each of:
 - 3 scenario profiles;
 - 3 QoS profiles.
 
-That gives 75 × 27 = **2,025 QoS instances over 675 base realizations**, with IFC seed 101, 202 or 404 for replicate r01, r02 or r04.
+That gives 83 × 27 = **2,241 QoS instances over 747 base realizations**, with IFC seed 101, 202 or 404 for replicate r01, r02 or r04.
 
 The resource, network, scenario, cost, calibration and QoS rules are read unchanged from `config/benchmark-v1.yaml`, and its SHA-256 is recorded in the manifest. Materialization uses the v1 code path:
 
@@ -62,6 +71,6 @@ The resource, network, scenario, cost, calibration and QoS rules are read unchan
 
 ## Order of operations
 
-1. `unseen-source-acquisition` (manual dispatch) acquires the 75 sources and pushes them with `manifests/source-workflows-unseen-v1.json` to a new `generated/source-workflows-unseen-v1-<sha8>` branch for review and merge.
+1. `unseen-source-acquisition` (manual dispatch) acquires the 83 sources and pushes them with `manifests/source-workflows-unseen-v1.json` to a new `generated/source-workflows-unseen-v1-<sha8>` branch for review and merge.
 2. Instances are materialized in CI and their SHA-256 values are frozen in a manifest, before any scheduler runs.
 3. Schedulers are run once. The results are reported whatever they are.
