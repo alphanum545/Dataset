@@ -1,0 +1,90 @@
+# Unseen-workflow evaluation set v1 (ifc-unseen-v1).
+#
+# Purpose: a final, frozen test of generalization to workflow DAGs that no scheduler
+# was designed or tuned on. It is ADDITIVE: the v1 pilot (160 dev + 40 holdout), its
+# 105 source DAX files and every v1 manifest stay byte-identical and are not modified.
+#
+# The IFC model is NOT redefined here. Resources, network, scenario profiles, cost model,
+# deadline/budget calibration and QoS profiles are read unchanged from `model_config`;
+# its SHA-256 is recorded in every unseen manifest.
+#
+# Two kinds of unseen DAGs:
+#   1. new_replicates: one new independent source replicate (r04) of each of the five v1
+#      Pegasus/Bharathi families at every v1 size, required to be checksum-distinct from
+#      the frozen r01-r03 artifacts. Same generator, same request policy as v1.
+#   2. new_families: four WfCommons/WfChef recipes whose DAG shapes differ from the five
+#      v1 families (1000genome, srasearch, blast at all seven sizes; soykb at the three
+#      sizes it can produce exactly). WfCommons Montage and Epigenomics are excluded on purpose: they model
+#      the same applications as v1 Montage and v1 Genome (the Bharathi GENOME model is the
+#      Epigenomics workflow).
+#
+# Selection: every acquired DAG is crossed with every resource scale, scenario profile and
+# QoS profile (full factorial, no outcome-dependent choice). Scheduler outcomes are never
+# used to choose sources or instances.
+
+set_id: ifc-unseen-v1
+model_config: config/benchmark-v1.yaml
+split: unseen_evaluation
+source_root_namespace: unseen-v1
+
+new_replicates:
+  provider: pegasus
+  repository: pegasus-isi/WorkflowGenerator
+  implementation: bharathi
+  pinned_commit: bb1f8d43fe203f5c2cb209540531998af52000ea
+  families: [montage, cybershake, ligo, sipht, genome]
+  requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
+  replicates: [r04]
+  # Acquisition policy (request search, exact count, first-valid acceptance) is the
+  # unchanged v1 policy in model_config.source_workflows.acquisition.
+  must_differ_from_source_manifest: manifests/source-workflows-v1.json
+
+new_families:
+  provider: wfcommons
+  repository: wfcommons/WfCommons
+  pinned_commit: e5418e131e83b43197568a54e31e1cd49be093d3
+  generator: wfchef
+  base_method: error_table
+  families:
+    # family token -> WfChef recipe class and the exact sizes it can structurally produce
+    1000genome:
+      recipe: GenomeRecipe
+      requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
+    srasearch:
+      recipe: SrasearchRecipe
+      requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
+    blast:
+      recipe: BlastRecipe
+      requested_task_counts: [60, 100, 200, 400, 600, 800, 1000]
+    soykb:
+      # Deep per-sample pipelines. At the pinned WfChef commit the base graph chosen for
+      # each request is deterministic (error-table method) and its duplicable
+      # microstructures have sizes {6,16}, {6,26} or {16}. An exact task count is
+      # therefore structurally reachable only for 200, 400 and 800 (60 is below the
+      # smallest base; 100, 600 and 1000 are not sums of the structure sizes). Unreachable
+      # sizes are omitted, never relabelled (same rule as the retired v1 Genome-50 size).
+      # Decided from recipe structure only, before any scheduler ran on any unseen DAG.
+      recipe: SoykbRecipe
+      requested_task_counts: [200, 400, 800]
+  replicates: [r01, r02]
+  acquisition:
+    # WfChef treats num_tasks as an upper bound on graph nodes INCLUDING its two
+    # synthetic SRC/DST nodes, which are dropped from the emitted workflow. Every attempt
+    # requests exactly target + 2 (a larger request can only overshoot) with a fresh
+    # seed, and only an emitted workflow whose parsed task count equals the target is
+    # accepted.
+    request_offset: 2
+    attempts_per_request: 100
+    max_attempts_per_replicate: 100
+    # Python `random` and NumPy global RNGs are seeded per attempt with
+    # first 4 bytes of sha256("ifc-unseen-v1|<family>|<target>|<replicate>|<attempt>").
+    seed_derivation: sha256_prefix_u32
+    accept_only_exact_task_count: true
+    accept_first_structurally_valid_matches: true
+    require_distinct_replicate_checksums: true
+
+# IFC realization seed per source replicate (v1 convention r0k -> k*101).
+source_to_ifc_seed:
+  r01: 101
+  r02: 202
+  r04: 404
